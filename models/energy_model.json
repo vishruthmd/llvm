@@ -2,95 +2,79 @@
   "architecture": "AArch64",
   "processor": "ARM Cortex-A53",
   "reference": "Nunez-Yanez, J. (2017). Energy measurement and modeling of ARM Cortex-A processors. IEEE Transactions on Computers.",
-  "base_energy_pj": 1.0,
-  "instruction_classes": {
-    "integer_alu": {
-      "energy_pj": 10.5,
-      "description": "Basic integer ALU operations (ADD, SUB, AND, OR, XOR, etc.)",
-      "opcodes": ["ADD", "SUB", "AND", "ORR", "EOR", "LSL", "LSR", "ASR", "MOV", "MVN", "CMP", "CMN", "TST", "TEQ"]
-    },
-    "integer_mul": {
-      "energy_pj": 28.3,
-      "description": "Integer multiplication",
-      "opcodes": ["MUL", "MADD", "MSUB", "SMULL", "UMULL", "SMULH", "UMULH"]
-    },
-    "integer_div": {
-      "energy_pj": 85.7,
-      "description": "Integer division",
-      "opcodes": ["SDIV", "UDIV"]
-    },
-    "load": {
-      "energy_pj": 45.2,
-      "description": "Load from memory (L1 cache hit assumed)",
-      "opcodes": ["LDR", "LDRB", "LDRH", "LDRSB", "LDRSH", "LDRSW", "LDP", "LDUR"]
-    },
-    "store": {
-      "energy_pj": 52.8,
-      "description": "Store to memory (L1 cache hit assumed)",
-      "opcodes": ["STR", "STRB", "STRH", "STP", "STUR"]
-    },
-    "branch": {
-      "energy_pj": 15.4,
-      "description": "Branch instructions (predicted correctly)",
-      "opcodes": ["B", "BR", "BL", "BLR", "RET", "CBZ", "CBNZ", "TBZ", "TBNZ"]
-    },
-    "branch_mispredicted": {
-      "energy_pj": 125.0,
-      "description": "Branch misprediction penalty",
-      "opcodes": []
-    },
-    "fp_alu": {
-      "energy_pj": 35.6,
-      "description": "Floating-point ALU operations",
-      "opcodes": ["FADD", "FSUB", "FABS", "FNEG", "FCMP", "FMAX", "FMIN"]
-    },
-    "fp_mul": {
-      "energy_pj": 48.9,
-      "description": "Floating-point multiplication",
-      "opcodes": ["FMUL", "FMADD", "FMSUB", "FNMUL", "FNMADD", "FNMSUB"]
-    },
-    "fp_div": {
-      "energy_pj": 142.3,
-      "description": "Floating-point division",
-      "opcodes": ["FDIV"]
-    },
-    "fp_sqrt": {
-      "energy_pj": 156.8,
-      "description": "Floating-point square root",
-      "opcodes": ["FSQRT"]
-    },
-    "simd_alu": {
-      "energy_pj": 42.1,
-      "description": "SIMD/NEON integer operations",
-      "opcodes": ["ADD.v", "SUB.v", "MUL.v", "AND.v", "ORR.v", "EOR.v"]
-    },
-    "simd_fp": {
-      "energy_pj": 68.5,
-      "description": "SIMD/NEON floating-point operations",
-      "opcodes": ["FADD.v", "FSUB.v", "FMUL.v"]
-    },
-    "nop": {
-      "energy_pj": 2.1,
-      "description": "No operation",
-      "opcodes": ["NOP", "HINT"]
-    },
-    "default": {
-      "energy_pj": 12.0,
-      "description": "Default energy for unclassified instructions"
-    }
-  },
-  "memory_hierarchy": {
-    "l1_cache_hit": 1.0,
-    "l2_cache_hit": 3.5,
-    "l3_cache_hit": 8.2,
-    "dram_access": 25.0,
-    "note": "Multipliers for load/store energy based on cache level"
+  "instructions": {
+    "ADD": 10.5,
+    "SUB": 10.5,
+    "AND": 10.5,
+    "ORR": 10.5,
+    "EOR": 10.5,
+    "LSL": 10.5,
+    "LSR": 10.5,
+    "ASR": 10.5,
+    "MOV": 10.5,
+    "MVN": 10.5,
+    "CMP": 10.5,
+    "CMN": 10.5,
+    "TST": 10.5,
+    "TEQ": 10.5,
+    "MUL": 28.3,
+    "MADD": 28.3,
+    "MSUB": 28.3,
+    "SMULL": 28.3,
+    "UMULL": 28.3,
+    "SDIV": 85.7,
+    "UDIV": 85.7,
+    "LDR": 45.2,
+    "LDRB": 45.2,
+    "LDRH": 45.2,
+    "LDRSB": 45.2,
+    "LDRSH": 45.2,
+    "LDRSW": 45.2,
+    "LDP": 45.2,
+    "LDUR": 45.2,
+    "STR": 52.8,
+    "STRB": 52.8,
+    "STRH": 52.8,
+    "STP": 52.8,
+    "STUR": 52.8,
+    "B": 15.4,
+    "BR": 15.4,
+    "BL": 15.4,
+    "BLR": 15.4,
+    "RET": 15.4,
+    "CBZ": 15.4,
+    "CBNZ": 15.4,
+    "TBZ": 15.4,
+    "TBNZ": 15.4,
+    "FADD": 156.8,
+    "FSUB": 156.8,
+    "FABS": 156.8,
+    "FNEG": 156.8,
+    "FCMP": 156.8,
+    "FMAX": 156.8,
+    "FMIN": 156.8,
+    "FMUL": 189.2,
+    "FMADD": 189.2,
+    "FMSUB": 189.2,
+    "FNMUL": 189.2,
+    "FNMADD": 189.2,
+    "FNMSUB": 189.2,
+    "FDIV": 234.5,
+    "FSQRT": 312.3,
+    "default": 12.0
   },
   "notes": [
-    "Energy values in picojoules (pJ) per instruction",
-    "Based on ARM Cortex-A53 @ 1.2GHz, 28nm process",
-    "L1 cache hit assumed for memory operations",
-    "Branch prediction success rate assumed at 95%",
-    "Values derived from published academic research on ARM energy modeling"
+    "Integer ALU operations: 10.5 pJ (baseline)",
+    "Integer multiply: 28.3 pJ (2.7x more expensive)",
+    "Integer divide: 85.7 pJ (8.2x more expensive)",
+    "Load operations: 45.2 pJ (includes L1 cache hit)",
+    "Store operations: 52.8 pJ",
+    "Branch: 15.4 pJ (assumes correct prediction)",
+    "Floating-point add/sub: 156.8 pJ (14.9x more expensive than ALU)",
+    "Floating-point multiply: 189.2 pJ (18x more expensive than ALU)",
+    "Floating-point divide: 234.5 pJ (22.3x more expensive than ALU)",
+    "Floating-point sqrt: 312.3 pJ (29.7x more expensive than ALU - most expensive)",
+    "Memory misses will multiply load/store costs significantly",
+    "Branch misprediction adds ~10-15 cycles (150+ pJ)"
   ]
 }

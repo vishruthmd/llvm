@@ -375,11 +375,18 @@ def print_text_summary(report: Dict[str, Any]):
     print(f"Processor: {report.get('processor', 'Unknown')}")
     print()
 
-    functions = report.get('functions', [])
-    total_energy = sum(f.get('total_energy_pj', 0) for f in functions)
-    total_instructions = sum(f.get('total_instructions', 0) for f in functions)
+    functions = report.get('functions', {})
+    
+    # FIX: Handle dict format (key-value pairs)
+    if isinstance(functions, dict):
+        function_list = list(functions.values())
+    else:
+        function_list = functions
+    
+    total_energy = sum(f.get('energy_pj', 0) if isinstance(f, dict) else 0 for f in function_list)
+    total_instructions = sum(f.get('instruction_count', 0) if isinstance(f, dict) else 0 for f in function_list)
 
-    print(f"Total Functions: {len(functions)}")
+    print(f"Total Functions: {len(function_list)}")
     print(f"Total Energy: {format_energy(total_energy)}")
     print(f"Total Instructions: {total_instructions:,}")
 
@@ -391,18 +398,136 @@ def print_text_summary(report: Dict[str, Any]):
     print("TOP ENERGY-CONSUMING FUNCTIONS")
     print("-"*70)
 
-    sorted_functions = sorted(functions,
-                             key=lambda f: f.get('total_energy_pj', 0),
-                             reverse=True)
+    sorted_functions = sorted(
+        [(name, data) for name, data in functions.items()] if isinstance(functions, dict) else [(f.get('name', 'unknown'), f) for f in function_list],
+        key=lambda x: x[1].get('energy_pj', 0) if isinstance(x[1], dict) else 0,
+        reverse=True
+    )
 
-    for i, func in enumerate(sorted_functions[:10], 1):
-        name = func.get('name', 'unknown')
-        energy = func.get('total_energy_pj', 0)
-        instructions = func.get('total_instructions', 0)
+    for i, (name, func) in enumerate(sorted_functions[:10], 1):
+        energy = func.get('energy_pj', 0) if isinstance(func, dict) else 0
+        instructions = func.get('instruction_count', 0) if isinstance(func, dict) else 0
         print(f"{i:2d}. {name:40s} {format_energy(energy):>15s} ({instructions:>6,d} instr)")
 
     print("="*70 + "\n")
 
+
+def generate_html(data, output_file):
+    """Generate HTML report from energy analysis results"""
+    
+    # Get functions dict
+    if 'functions' in data:
+        functions = data['functions']
+    else:
+        functions = {}
+    
+    # Sort by energy
+    sorted_funcs = sorted(
+        functions.items(),
+        key=lambda x: x[1].get('energy_pj', 0) if isinstance(x[1], dict) else 0,
+        reverse=True
+    )
+    
+    # Calculate totals
+    total_energy_pj = data.get('total_energy_pj', 0)
+    total_energy_nj = data.get('total_energy_nj', 0)
+    total_instructions = data.get('total_instructions', 0)
+    
+    # Find max energy for bar visualization - FIX: Define this BEFORE using it!
+    max_energy = max([f[1].get('energy_pj', 0) for f in sorted_funcs if isinstance(f[1], dict)]) if sorted_funcs else 1
+    
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Energy Estimation Report</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }}
+        .container {{ max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }}
+        h1 {{ color: #333; border-bottom: 3px solid #0066cc; padding-bottom: 10px; margin-bottom: 30px; }}
+        h2 {{ color: #0066cc; margin-top: 30px; margin-bottom: 15px; }}
+        .summary {{ background: #e8f4f8; padding: 20px; border-radius: 5px; margin: 20px 0; }}
+        .summary-item {{ display: inline-block; margin-right: 40px; margin-bottom: 10px; }}
+        .summary-item strong {{ color: #0066cc; font-size: 16px; }}
+        table {{ width: 100%; border-collapse: collapse; margin: 20px 0; }}
+        th {{ background: #0066cc; color: white; padding: 12px; text-align: left; font-weight: bold; }}
+        td {{ padding: 10px; border-bottom: 1px solid #ddd; }}
+        tr:hover {{ background: #f9f9f9; }}
+        .bar {{ height: 22px; border-radius: 3px; display: inline-block; min-width: 5px; }}
+        .energy-high {{ background: #ff6b6b; }}
+        .energy-medium {{ background: #ffa500; }}
+        .energy-low {{ background: #51cf66; }}
+        .code {{ font-family: monospace; background: #f5f5f5; padding: 5px 8px; border-radius: 3px; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Energy Estimation Report</h1>
+        
+        <div class="summary">
+            <div class="summary-item">
+                <strong>Total Energy:</strong> {total_energy_nj:.2f} nJ ({total_energy_pj:.2f} pJ)
+            </div>
+            <div class="summary-item">
+                <strong>Total Instructions:</strong> {total_instructions}
+            </div>
+            <div class="summary-item">
+                <strong>Functions/Blocks:</strong> {len(sorted_funcs)}
+            </div>
+            <div class="summary-item">
+                <strong>Avg/Instruction:</strong> {(total_energy_pj/total_instructions if total_instructions > 0 else 0):.2f} pJ
+            </div>
+        </div>
+        
+        <h2>Top Energy Consumers</h2>
+        <table>
+            <tr>
+                <th>Function/Block</th>
+                <th>Energy (pJ)</th>
+                <th>Instructions</th>
+                <th>Energy/Instr (pJ)</th>
+                <th>Energy Distribution</th>
+            </tr>
+"""
+    
+    # Add function rows
+    for func_name, func_data in sorted_funcs:
+        if not isinstance(func_data, dict):
+            continue
+            
+        energy = func_data.get('energy_pj', 0)
+        instr_count = func_data.get('instruction_count', 0)
+        energy_per_instr = round(energy / instr_count, 2) if instr_count > 0 else 0
+        
+        # Determine color
+        if energy > max_energy * 0.6:
+            color_class = "energy-high"
+        elif energy > max_energy * 0.3:
+            color_class = "energy-medium"
+        else:
+            color_class = "energy-low"
+        
+        bar_width = int((energy / max_energy) * 350) if max_energy > 0 else 0
+        
+        html += f"""            <tr>
+                <td><span class="code">{func_name}</span></td>
+                <td>{energy:.2f}</td>
+                <td>{instr_count}</td>
+                <td>{energy_per_instr}</td>
+                <td><div class="bar {color_class}" style="width: {bar_width}px;"></div></td>
+            </tr>
+"""
+    
+    html += """        </table>
+    </div>
+</body>
+</html>"""
+    
+    # Write HTML file
+    with open(output_file, 'w', encoding='utf-8') as f:
+        f.write(html)
+    
+    print(f"HTML report generated: {output_file}")
 
 def main():
     parser = argparse.ArgumentParser(
@@ -431,9 +556,8 @@ def main():
     print_text_summary(report)
 
     if not args.no_html:
-        generate_html_report(report, args.output)
+        generate_html(report, args.output)
         print(f"\nOpen {args.output} in a web browser to view the detailed report.")
-
 
 if __name__ == '__main__':
     main()
