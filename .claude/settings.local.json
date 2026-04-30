@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(clang *)",
+      "Bash(cmake *)",
+      "Bash(cmd //c build.bat)",
+      "Bash(clang++ -shared -o build/lib/EnergyPass.dll src/EnergyPass.cpp -I\"C:/Program Files/LLVM/include\" -L\"C:/Program Files/LLVM/lib\" -lLLVMCore -lLLVMSupport -lLLVMCodeGen -lLLVMAnalysis -std=c++17 -D_CRT_SECURE_NO_WARNINGS -fms-compatibility-version=19)",
+      "Bash(python scripts/simple_energy_analysis.py output/test.s models/energy_model.json output/energy_report.json)",
+      "Bash(python scripts/visualize.py output/energy_report.json -o output/energy_report.html)",
+      "Bash(rm -rf output/*)",
+      "Bash(bash run_simple.bat examples/simple_test.c)",
+      "Bash(chmod +x run_simple.sh)"
+    ]
+  }
+}
