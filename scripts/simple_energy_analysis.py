@@ -7,162 +7,146 @@ Analyzes assembly output and estimates energy consumption
 import json
 import re
 import sys
-from pathlib import Path
 from collections import defaultdict
 
+
 def load_energy_model(model_path):
-    """Load energy model from JSON file"""
-    with open(model_path, 'r') as f:
-        return json.load(f)
+    """Load energy costs from JSON model"""
+    with open(model_path, "r") as f:
+        model = json.load(f)
+    return model["instructions"]
 
-def classify_instruction(instr, energy_model):
-    """Classify an instruction and return its energy cost"""
-    instr = instr.strip().upper()
-
-    # Map instruction patterns to energy classes
-    for class_name, class_data in energy_model['instruction_classes'].items():
-        for opcode in class_data.get('opcodes', []):
-            if instr.startswith(opcode.upper()):
-                return class_name, class_data['energy_pj']
-
-    # Default patterns for common instruction types
-    if any(instr.startswith(op) for op in ['ADD', 'SUB', 'AND', 'OR', 'XOR', 'MOV', 'CMP', 'TEST']):
-        return 'integer_alu', 10.5
-    elif any(instr.startswith(op) for op in ['IMUL', 'MUL']):
-        return 'integer_multiply', 28.3
-    elif any(instr.startswith(op) for op in ['IDIV', 'DIV']):
-        return 'integer_divide', 85.7
-    elif any(instr.startswith(op) for op in ['LD', 'LDR', 'LOAD', 'MOV']) and '[' in instr:
-        return 'load', 45.2
-    elif any(instr.startswith(op) for op in ['ST', 'STR', 'STORE']) and '[' in instr:
-        return 'store', 52.8
-    elif any(instr.startswith(op) for op in ['FADD', 'FSUB', 'VADD', 'VSUB']):
-        return 'fp_add_sub', 35.6
-    elif any(instr.startswith(op) for op in ['FMUL', 'VMUL']):
-        return 'fp_multiply', 48.9
-    elif any(instr.startswith(op) for op in ['FDIV', 'VDIV']):
-        return 'fp_divide', 124.5
-    elif any(instr.startswith(op) for op in ['FSQRT', 'VSQRT']):
-        return 'fp_sqrt', 156.8
-    elif any(instr.startswith(op) for op in ['B', 'JMP', 'JE', 'JNE', 'JZ', 'JNZ', 'CALL', 'RET']):
-        return 'branch', 15.4
-
-    return 'unknown', 10.0  # Default energy for unknown instructions
 
 def parse_assembly(asm_file):
-    """Parse assembly file and extract functions and instructions"""
-    functions = {}
+    """Parse AArch64 / x86-64 assembly and extract real instructions."""
+    functions = defaultdict(lambda: {"instructions": [], "total_energy": 0})
     current_function = None
 
-    with open(asm_file, 'r') as f:
-        for line in f:
-            line = line.strip()
+    with open(asm_file, "r", errors="replace") as f:
+        for raw_line in f:
+            line = raw_line.strip()
 
-            # Detect function start (various assembly formats)
-            if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*:', line):
-                func_name = line.rstrip(':')
-                current_function = func_name
-                functions[current_function] = []
-
-            # Skip empty lines, comments, and directives
-            elif not line or line.startswith('.') or line.startswith('#') or line.startswith(';'):
+            # ── Skip empty lines ─────────────────────────────────────────
+            if not line:
                 continue
 
-            # Collect instructions
-            elif current_function:
-                # Remove comments
-                instr = re.sub(r'[#;].*$', '', line).strip()
-                if instr:
-                    functions[current_function].append(instr)
+            # ── Strip trailing inline comments (// … or # …) ─────────────
+            # Do this early so label detection works on lines like:
+            #   integer_ops:                // @integer_ops
+            line_no_comment = re.split(r"//|#", line)[0].rstrip()
+
+            # ── Skip pure comment or directive lines ─────────────────────
+            if not line_no_comment:
+                continue
+            if line_no_comment.startswith((";", "/*", "*")):
+                continue
+
+            # ── Skip assembler directives (.cfi_*, .type, .globl …) ──────
+            if line_no_comment.startswith("."):
+                continue
+
+            # ── Detect label / function header ───────────────────────────
+            # Handles both:  "integer_ops:"  and  "integer_ops:   // comment"
+            if line_no_comment.endswith(":"):
+                label = line_no_comment[:-1].strip()
+                # Global function labels are plain identifiers (no leading dot).
+                # Local branch targets start with '.' or digits — skip them.
+                if label and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", label):
+                    current_function = label
+                continue
+
+            # ── Parse instruction ─────────────────────────────────────────
+            if current_function:
+                parts = line_no_comment.split()
+                if not parts:
+                    continue
+                raw = parts[0]
+
+                instr = raw.upper()
+
+                # Strip AT&T size suffixes: addl→ADD, movq→MOV, imulq→IMUL
+                instr = re.sub(r"[BWLQ]$", "", instr)
+
+                # Strip LLVM IR type suffixes: .I32, .F64 → bare mnemonic
+                instr = re.sub(r"\.\w+$", "", instr)
+
+                # Must be a plausible mnemonic: 2–12 uppercase alpha chars
+                if instr and re.match(r"^[A-Z]{2,12}$", instr):
+                    functions[current_function]["instructions"].append(instr)
 
     return functions
 
-def analyze_energy(functions, energy_model):
-    """Analyze energy consumption for each function"""
-    results = []
 
-    for func_name, instructions in functions.items():
-        if not instructions:
-            continue
+def calculate_energy(functions, energy_model):
+    """Calculate total energy per function"""
+    results = {"functions": {}, "total_energy_pj": 0, "total_instructions": 0}
 
-        instruction_classes = defaultdict(int)
-        total_energy = 0.0
+    for func_name, data in functions.items():
+        total = 0
+        instruction_counts = defaultdict(int)
 
-        for instr in instructions:
-            class_name, energy = classify_instruction(instr, energy_model)
-            instruction_classes[class_name] += 1
-            total_energy += energy
+        for instr in data["instructions"]:
+            # Look up instruction energy cost
+            energy = energy_model.get(instr, energy_model.get("default", 12.0))
+            total += energy
+            instruction_counts[instr] += 1
 
-        results.append({
-            'name': func_name,
-            'total_energy_pj': total_energy,
-            'total_instructions': len(instructions),
-            'avg_energy_per_instruction': total_energy / len(instructions) if instructions else 0,
-            'instruction_classes': dict(instruction_classes)
-        })
+        results["functions"][func_name] = {
+            "instructions": data["instructions"],
+            "instruction_count": len(data["instructions"]),
+            "instruction_breakdown": dict(instruction_counts),
+            "energy_pj": round(total, 2),
+            "energy_nj": round(total / 1000, 2),
+        }
+
+        results["total_energy_pj"] += total
+        results["total_instructions"] += len(data["instructions"])
+
+    results["total_energy_pj"] = round(results["total_energy_pj"], 2)
+    results["total_energy_nj"] = round(results["total_energy_pj"] / 1000, 2)
 
     return results
 
-def generate_report(results, energy_model, output_file):
-    """Generate JSON report"""
-    report = {
-        'architecture': energy_model.get('architecture', 'x86-64'),
-        'processor': energy_model.get('processor', 'Generic'),
-        'note': 'Simplified static analysis without frequency weighting',
-        'functions': results
-    }
-
-    with open(output_file, 'w') as f:
-        json.dump(report, f, indent=2)
-
-    return report
-
-def print_summary(results):
-    """Print summary to console"""
-    print("\n=== Energy Estimation Summary ===\n")
-
-    total_energy = sum(f['total_energy_pj'] for f in results)
-    total_instructions = sum(f['total_instructions'] for f in results)
-
-    print(f"Total functions analyzed: {len(results)}")
-    print(f"Total instructions: {total_instructions}")
-    print(f"Total estimated energy: {total_energy:.2f} pJ\n")
-
-    print("Per-function breakdown:")
-    print(f"{'Function':<30} {'Instructions':<15} {'Energy (pJ)':<15} {'Avg/Instr':<15}")
-    print("-" * 75)
-
-    for func in sorted(results, key=lambda x: x['total_energy_pj'], reverse=True):
-        print(f"{func['name']:<30} {func['total_instructions']:<15} "
-              f"{func['total_energy_pj']:<15.2f} {func['avg_energy_per_instruction']:<15.2f}")
 
 def main():
-    if len(sys.argv) < 3:
-        print("Usage: python simple_energy_analysis.py <assembly_file> <energy_model.json> [output.json]")
+    if len(sys.argv) != 4:
+        print(
+            "Usage: python simple_energy_analysis.py <assembly.s> <energy_model.json> <output.json>"
+        )
         sys.exit(1)
 
     asm_file = sys.argv[1]
     model_file = sys.argv[2]
-    output_file = sys.argv[3] if len(sys.argv) > 3 else 'energy_report.json'
+    output_file = sys.argv[3]
 
-    # Load energy model
+    print(f"Loading energy model from {model_file}")
     energy_model = load_energy_model(model_file)
 
-    # Parse assembly
-    print(f"Parsing assembly file: {asm_file}")
+    print(f"Parsing assembly from {asm_file}")
     functions = parse_assembly(asm_file)
-    print(f"Found {len(functions)} functions")
 
-    # Analyze energy
-    print("Analyzing energy consumption...")
-    results = analyze_energy(functions, energy_model)
+    if not functions:
+        print("ERROR: No functions found in assembly!")
+        sys.exit(1)
 
-    # Generate report
-    report = generate_report(results, energy_model, output_file)
-    print(f"\nJSON report saved to: {output_file}")
+    print(f"Calculating energy for {len(functions)} functions")
+    results = calculate_energy(functions, energy_model)
 
-    # Print summary
-    print_summary(results)
+    # Save results
+    with open(output_file, "w") as f:
+        json.dump(results, f, indent=2)
 
-if __name__ == '__main__':
+    print(f"\nResults saved to {output_file}")
+    print(f"Total Energy: {results['total_energy_nj']} nJ")
+    print(f"Total Instructions: {results['total_instructions']}")
+    print(f"Functions analyzed: {len(results['functions'])}")
+
+    # Print per-function summary
+    for func_name, func_data in results["functions"].items():
+        print(
+            f"  {func_name}: {func_data['energy_pj']} pJ ({func_data['instruction_count']} instructions)"
+        )
+
+
+if __name__ == "__main__":
     main()
