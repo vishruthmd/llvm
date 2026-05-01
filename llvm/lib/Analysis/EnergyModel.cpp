@@ -1,20 +1,11 @@
-//===- EnergyModel.cpp - Simple JSON Energy Model ----------------*- C++ -*-===//
+//===- EnergyModel.cpp - JSON Instruction Energy Model --------*- C++ -*-===//
 //
-// Implementation of the EnergyModel helper that reads a JSON file with the
-// format:
-// {
-//   "arch": "AArch64",
-//   "unit": "pJ",
-//   "instructions": { "ADD": 2.5, "SUB": 2.5, ... }
-// }
-//
-// The class stores a DenseMap from opcode name to energy (double).  Missing
-// entries default to 0.0 pJ.
+// Implementation of EnergyModel.  See EnergyModel.h for the JSON schema.
 //
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Analysis/EnergyModel.h"
-#include "llvm/Support/Debug.h"
+#include "llvm/Support/Error.h"
 #include "llvm/Support/ErrorOr.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -23,49 +14,70 @@
 using namespace llvm;
 
 EnergyModel::EnergyModel(StringRef Path) {
-  // Load the file contents.
-  ErrorOr<std::unique_ptr<MemoryBuffer>> BufferOr = MemoryBuffer::getFile(Path);
-  if (!BufferOr) {
-    errs() << "[EnergyModel] could not open model file: " << Path << "\n";
+  // ── 1. Read file ─────────────────────────────────────────────────────────
+  auto BufOrErr = MemoryBuffer::getFile(Path);
+  if (!BufOrErr) {
+    errs() << "[EnergyModel] cannot open '" << Path
+           << "': " << BufOrErr.getError().message() << '\n';
     return;
   }
 
-  Expected<json::Value> JSONOr = json::parse(BufferOr.get()->getBuffer());
-  if (!JSONOr) {
-    errs() << "[EnergyModel] failed to parse JSON model: " << Path << "\n";
+  // ── 2. Parse JSON ─────────────────────────────────────────────────────────
+  // json::parse returns Expected<json::Value>; must consume error on failure.
+  auto ValOrErr = json::parse((*BufOrErr)->getBuffer());
+  if (!ValOrErr) {
+    errs() << "[EnergyModel] JSON parse error in '" << Path << "': "
+           << toString(ValOrErr.takeError()) << '\n';
     return;
   }
 
-  const json::Object *Root = JSONOr->getAsObject();
+  // ── 3. Extract root object ────────────────────────────────────────────────
+  const json::Object *Root = ValOrErr->getAsObject();
   if (!Root) {
-    errs() << "[EnergyModel] JSON root is not an object" << "\n";
+    errs() << "[EnergyModel] JSON root must be an object in '" << Path << "'\n";
     return;
   }
 
-  const json::Object *InstrObj = nullptr;
-  if (auto *I = Root->getObject("instructions"))
-    InstrObj = I;
-  else {
-    errs() << "[EnergyModel] no \"instructions\" object in model" << "\n";
+  // Optional metadata fields
+  if (auto *A = Root->getString("arch"))
+    Arch = A->str();
+  if (auto *U = Root->getString("unit"))
+    Unit = U->str();
+
+  // ── 4. Extract instructions map ───────────────────────────────────────────
+  const json::Object *InstrObj = Root->getObject("instructions");
+  if (!InstrObj) {
+    errs() << "[EnergyModel] missing \"instructions\" object in '" << Path << "'\n";
     return;
   }
 
-  for (auto &KV : *InstrObj) {
-    // KV.first = opcode string, KV.second = number (expected double/int)
-    if (auto *Num = KV.second.getAsNumber()) {
-      double Energy = Num->getAsDouble();
-      EnergyMap[KV.first()] = Energy;
+  unsigned Skipped = 0;
+  for (const auto &KV : *InstrObj) {
+    // KV.first  → json::ObjectKey (implicitly converts to StringRef)
+    // KV.second → json::Value
+    //
+    // getAsNumber() returns std::optional<double>; it is NOT a pointer.
+    // Check with 'if (auto Val = ...)' then dereference with '*Val'.
+    if (auto Val = KV.second.getAsNumber()) {
+      // StringMap copies the key string internally — no dangling reference.
+      EnergyMap[KV.first] = *Val;
     } else {
-      // ignore non‑numeric entries, but warn.
-      errs() << "[EnergyModel] non‑numeric energy for opcode " << KV.first()
-             << " ignored\n";
+      errs() << "[EnergyModel] non-numeric energy for opcode '"
+             << KV.first << "' — skipped\n";
+      ++Skipped;
     }
   }
+
+  Loaded = true;
+  LLVM_DEBUG(
+    dbgs() << "[EnergyModel] loaded " << EnergyMap.size()
+           << " opcodes from '" << Path << "'"
+           << (Skipped ? " (" + std::to_string(Skipped) + " skipped)" : "")
+           << '\n';
+  );
 }
 
 double EnergyModel::getEnergy(StringRef Opcode) const {
   auto It = EnergyMap.find(Opcode);
-  if (It != EnergyMap.end())
-    return It->second;
-  return 0.0; // unknown opcode → zero energy (safe default)
+  return (It != EnergyMap.end()) ? It->second : 0.0;
 }
