@@ -12,10 +12,12 @@ with open(in_file) as f:
 functions = []
 for fname, fdata in raw.get("functions", {}).items():
     e = fdata.get("energy_pj", 0.0)
+    ib = fdata.get("instruction_breakdown", {})
     functions.append(
         {
             "name": fname,
             "total_energy_pJ": e,
+            "instruction_breakdown": ib,
             "blocks": [
                 {
                     "name": "body",

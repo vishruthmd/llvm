@@ -145,10 +145,20 @@ def calculate_energy(functions, energy_model):
             total += energy
             instruction_counts[instr] += 1
 
+        # Build enriched breakdown with per-opcode energy
+        enriched_breakdown = {}
+        for instr, count in instruction_counts.items():
+            per_energy = energy_model.get(instr, energy_model.get("default", 12.0))
+            enriched_breakdown[instr] = {
+                "count": count,
+                "energy_per": round(per_energy, 2),
+                "total": round(count * per_energy, 2),
+            }
+
         results["functions"][func_name] = {
             "instructions": data["instructions"],
             "instruction_count": len(data["instructions"]),
-            "instruction_breakdown": dict(instruction_counts),
+            "instruction_breakdown": enriched_breakdown,
             "energy_pj": round(total, 2),
             "energy_nj": round(total / 1000, 2),
         }
