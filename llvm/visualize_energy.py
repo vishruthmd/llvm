@@ -493,6 +493,35 @@ details > .block-table { padding: 0; }
 .block-table table { font-size: 0.78rem; }
 .block-table thead th { font-size: 0.65rem; }
 
+/* Opcode breakdown nested inside function details */
+.opcode-detail {
+  border-top: 1px solid var(--border);
+}
+.opcode-detail > summary {
+  padding: 7px 20px 7px 40px;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 500;
+  background: rgba(108,143,247,0.03);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.opcode-detail > summary::-webkit-details-marker { display: none; }
+.opcode-detail > summary:hover { background: rgba(108,143,247,0.08); }
+.opcode-detail > summary .arrow { transition: transform 0.2s; font-size: 0.65rem; color: var(--muted); }
+.opcode-detail[open] > summary .arrow { transform: rotate(90deg); }
+.opcode-detail > .opcode-table { padding: 0; }
+.opcode-table table { font-size: 0.73rem; }
+.opcode-table thead th { font-size: 0.6rem; }
+.opcode-table td.opcode code {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
 /* SVG donut chart */
 .donut-section {
   display: flex;
@@ -877,6 +906,50 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
             </tr>""")
 
         tid = f"blk-{html.escape(fn_name, quote=True).replace(' ', '_')[:30]}-{id(fn)}"
+
+        # --- Opcode breakdown ---
+        ib = fn.get("instruction_breakdown", {})
+        if ib:
+            max_op_energy = max(op["total"] for op in ib.values()) if ib else 1.0
+            op_rows = []
+            for opcode, info in sorted(ib.items(), key=lambda x: x[1]["total"], reverse=True):
+                op_ratio = info["total"] / max_op_energy if max_op_energy > 0 else 0.0
+                op_color = energy_color(info["total"], max_op_energy)
+                op_rows.append(f"""
+            <tr>
+              <td class="opcode" data-sort="{html.escape(opcode)}"><code>{html.escape(opcode)}</code></td>
+              <td class="number">{info["count"]}</td>
+              <td class="number">{info["energy_per"]:.2f}</td>
+              <td class="number" data-sort="{info["total"]:.6f}">{info["total"]:.2f}</td>
+              <td class="bar-cell">{pct_bar_html(op_ratio, op_color)}</td>
+            </tr>""")
+            total_opcodes = len(ib)
+            opcode_section = f"""
+      <details class="opcode-detail">
+        <summary>
+          <span class="arrow">></span>
+          Instruction Breakdown &mdash; {total_opcodes} opcodes
+        </summary>
+        <div class="opcode-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Opcode</th>
+                <th class="num">Count</th>
+                <th class="num">Energy/Inst ({html.escape(unit)})</th>
+                <th class="num">Total ({html.escape(unit)})</th>
+                <th>Bar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {"".join(op_rows)}
+            </tbody>
+          </table>
+        </div>
+      </details>"""
+        else:
+            opcode_section = ""
+
         details_html_parts.append(f"""
       <details>
         <summary>
@@ -906,6 +979,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
             </tbody>
           </table>
         </div>
+        {opcode_section}
       </details>""")
 
     details_section = f"""
