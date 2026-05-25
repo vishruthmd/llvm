@@ -844,8 +844,8 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
         </tr>""")
 
     summary_table = f"""
-    <section class="panel">
-      <h2>[A] Function Energy Summary</h2>
+    <section class="panel" id="sec-summary">
+      <h2>[A] Function Energy Summary <span class="hint">(click any column header to sort &mdash; click a function name to see its block breakdown in <a href="#sec-blocks" style="color:var(--accent);text-decoration:none;">[B]</a>)</span></h2>
       <table id="fn-table">
         <thead>
           <tr>
@@ -983,9 +983,9 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
       </details>""")
 
     details_section = f"""
-    <section class="panel">
+    <section class="panel" id="sec-blocks">
       <h2>[B] Per-Function Block Breakdown
-        <span class="hint">(click a row to expand)</span>
+        <span class="hint">(click a row to expand &mdash; overview in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; distribution in <a href="#sec-donut" style="color:var(--accent);text-decoration:none;">[C]</a>)</span>
       </h2>
       {"".join(details_html_parts)}
     </section>
@@ -1007,8 +1007,12 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
     <h1>[E] {html.escape(title)}</h1>
     <div class="sub">
       Static energy estimation via LLVM EnergyEstimationPass (MachineFunctionPass)
-    </div>
-    <div style="margin-top:10px">{badges_html}</div>
+    </div>      <div style="margin-top:10px">{badges_html}</div>
+      <div style="margin-top:6px;color:#8892a4;font-size:0.72rem;">
+        Sections: <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
+        &middot; <a href="#sec-blocks" style="color:#6c8ff7;text-decoration:none;">[B] Blocks</a>
+        &middot; <a href="#sec-donut" style="color:#6c8ff7;text-decoration:none;">[C] Distribution</a>
+      </div>
   </div>
   <button id="themeBtn" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
@@ -1016,11 +1020,9 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
 </header>
 
 <div class="container">
-  {stat_cards}
-
-  <section class="panel">
-    <h2>[C] Energy Distribution (Donut Chart)</h2>
-    {donut_chart}
+  {stat_cards}    <section class="panel" id="sec-donut">
+      <h2>[C] Energy Distribution <span class="hint">(per-function breakdown in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; block details in <a href="#sec-blocks" style="color:var(--accent);text-decoration:none;">[B]</a>)</span></h2>
+      {donut_chart}
   </section>
 
   {summary_table}
