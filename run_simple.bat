@@ -31,7 +31,9 @@ if not exist "%TEST_FILE%" (
 
 REM ── Paths ────────────────────────────────────────────────────────────────────
 set OUTPUT_DIR=output
+set DEFAULT_MODEL=llvm\energy-models\aarch64.json
 set MODEL_FILE=llvm\energy-models\aarch64.json
+set X86_MODEL=llvm\energy-models\x86_64.json
 set ANALYSIS_SCRIPT=scripts\simple_energy_analysis.py
 set VISUALIZE_SCRIPT=llvm\visualize_energy.py
 set LEGACY_VISUALIZE=scripts\visualize.py
@@ -66,7 +68,7 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo       Written: %OUTPUT_DIR%\test.ll
 
-REM ── Step 2: Compile to AArch64-style assembly ────────────────────────────────
+REM ── Step 2: Compile to assembly ─────────────────────────────────────────────
 echo [2/5] Compiling to assembly...
 clang -O2 -S "%TEST_FILE%" -o "%OUTPUT_DIR%\test.s" 2>>"%OUTPUT_DIR%\clang_err.txt"
 if %ERRORLEVEL% NEQ 0 (
@@ -76,9 +78,26 @@ if %ERRORLEVEL% NEQ 0 (
 )
 echo       Written: %OUTPUT_DIR%\test.s
 
+REM ── Step 2b: Auto-detect architecture and select energy model ───────────────
+echo [2b/5] Detecting architecture from assembly...
+findstr /i /c:".arch arm" "%OUTPUT_DIR%\test.s" >nul 2>nul
+if not errorlevel 1 (
+    set "MODEL_FILE=%DEFAULT_MODEL%"
+    echo       Architecture: AArch64  (model: aarch64.json)
+) else (
+    findstr /i /c:".arch aarch64" "%OUTPUT_DIR%\test.s" >nul 2>nul
+    if not errorlevel 1 (
+        set "MODEL_FILE=%DEFAULT_MODEL%"
+        echo       Architecture: AArch64  (model: aarch64.json)
+    ) else (
+        set "MODEL_FILE=%X86_MODEL%"
+        echo       Architecture: x86-64  (model: x86_64.json)
+    )
+)
+
 REM ── Step 3: Analyze energy consumption ──────────────────────────────────────
 echo [3/5] Analyzing energy consumption...
-python "%ANALYSIS_SCRIPT%" "%OUTPUT_DIR%\test.s" "%MODEL_FILE%" "%OUTPUT_DIR%\energy_results_raw.json"
+python "%ANALYSIS_SCRIPT%" "%OUTPUT_DIR%\test.s" "!MODEL_FILE!" "%OUTPUT_DIR%\energy_results_raw.json"
 if %ERRORLEVEL% NEQ 0 (
     echo [FAIL] Energy analysis failed.
     exit /b 1
@@ -127,7 +146,7 @@ echo.
 echo   Output files in: %OUTPUT_DIR%\
 echo     energy_results.json   - Structured energy breakdown
 echo     energy_report.html    - Interactive HTML report
-echo     test.s                - AArch64 assembly
+echo     test.s                - Assembly output
 echo     test.ll               - LLVM IR
 echo.
 echo   Open the report:

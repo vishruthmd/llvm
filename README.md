@@ -152,7 +152,7 @@ python3 llvm/visualize_energy.py results.json \
 
 The report includes:
 - Sortable function summary table with heat-map bars
-- 🔴 HOT / 🟡 WARM / 🟢 COOL category badges
+- [HIGH] / [MEDIUM] / [LOW] energy category badges
 - Collapsible per-function block breakdown
 - ASCII summary to stdout
 
