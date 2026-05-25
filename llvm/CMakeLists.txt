@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(EnergyEstimationPass
   VERSION 1.0.0
   DESCRIPTION "LLVM Static Energy Estimation Pass (Assignment 22)"
-  LANGUAGES CXX
+  LANGUAGES CXX C
 )
 
 set(CMAKE_CXX_STANDARD 17)
@@ -24,9 +24,9 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 # ── Build the EnergyModel library and EnergyEstimationPass plugin ─────────────
-# The inner llvm/ subdirectory adds lib/Analysis (EnergyModel) and
-# lib/CodeGen (EnergyEstimationPass) as further subdirectories.
-add_subdirectory(llvm)
+# Add the lib subdirectories directly (no inner llvm/ wrapper dir)
+add_subdirectory(lib/Analysis)
+add_subdirectory(lib/CodeGen)
 
 # ── Copy energy model files to build directory for convenient testing ─────────
 file(COPY ${CMAKE_SOURCE_DIR}/energy-models
