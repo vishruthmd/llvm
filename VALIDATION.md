@@ -59,11 +59,11 @@ This document validates the energy values used in our AArch64 energy model (`llv
 
 | Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| ADD / SUB | 2.5–3.2 | 2.8 | < 8% | ✅ Valid |
-| AND / OR / XOR | 2.4–3.0 | 2.7 | < 8% | ✅ Valid |
-| Shift (LSL/LSR/ASR) | 2.3–2.8 | 2.5 | < 7% | ✅ Valid |
-| MOV (register) | 1.2–1.8 | 1.5 | < 10% | ✅ Valid |
-| CMP / TST | 2.4–2.9 | 2.6 | < 7% | ✅ Valid |
+| ADD / SUB | 2.5–3.2 | 2.8 | < 8% | [PASS] |
+| AND / OR / XOR | 2.4–3.0 | 2.7 | < 8% | [PASS] |
+| Shift (LSL/LSR/ASR) | 2.3–2.8 | 2.5 | < 7% | [PASS] |
+| MOV (register) | 1.2–1.8 | 1.5 | < 10% | [PASS] |
+| CMP / TST | 2.4–2.9 | 2.6 | < 7% | [PASS] |
 
 **Analysis:** Integer ALU operations are the cheapest instruction class, reflecting their simple hardware implementation (single-cycle, minimal switching activity). Our values fall within the center of published ranges.
 
@@ -71,13 +71,13 @@ This document validates the energy values used in our AArch64 energy model (`llv
 
 | Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| MUL (32-bit) | 5.8–7.2 | 6.5 | < 6% | ✅ Valid |
-| MUL (64-bit) | 6.2–7.5 | 6.8 | < 6% | ✅ Valid |
-| MADD (multiply-add) | 7.0–8.2 | 7.5 | < 5% | ✅ Valid |
-| SMULL (signed multiply long) | 6.8–7.8 | 7.2 | < 5% | ✅ Valid |
-| SDIV (32-bit) | 15–22 | 18.0 | < 12% | ✅ Valid |
-| UDIV (32-bit) | 14–20 | 16.5 | < 11% | ✅ Valid |
-| SDIV (64-bit) | 18–28 | 22.0 | < 12% | ✅ Valid |
+| MUL (32-bit) | 5.8–7.2 | 6.5 | < 6% | [PASS] |
+| MUL (64-bit) | 6.2–7.5 | 6.8 | < 6% | [PASS] |
+| MADD (multiply-add) | 7.0–8.2 | 7.5 | < 5% | [PASS] |
+| SMULL (signed multiply long) | 6.8–7.8 | 7.2 | < 5% | [PASS] |
+| SDIV (32-bit) | 15–22 | 18.0 | < 12% | [PASS] |
+| UDIV (32-bit) | 14–20 | 16.5 | < 11% | [PASS] |
+| SDIV (64-bit) | 18–28 | 22.0 | < 12% | [PASS] |
 
 **Analysis:** Multiply operations cost 2–3× more than ALU due to complex multiplier hardware. Divide operations cost 6–8× more than ALU due to iterative SRT division algorithm requiring multiple cycles. Our model's 64-bit variants are proportionally higher than 32-bit.
 
@@ -85,13 +85,13 @@ This document validates the energy values used in our AArch64 energy model (`llv
 
 | Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| LDR (scalar, L1 hit) | 8.5–10.5 | 9.5 | < 5% | ✅ Valid |
-| LDR (scalar, base+offset) | 9.5–11.5 | 10.5 | < 8% | ✅ Valid |
-| LDP (load pair) | 13.0–15.5 | 14.0 | < 6% | ✅ Valid |
-| STR (scalar, L1 hit) | 6.5–8.0 | 7.2 | < 5% | ✅ Valid |
-| STP (store pair) | 10.5–13.0 | 11.5 | < 6% | ✅ Valid |
-| LDXR (load exclusive) | 10.5–13.0 | 11.5 | < 6% | ✅ Valid |
-| STXR (store exclusive) | 8.0–10.5 | 9.0 | < 8% | ✅ Valid |
+| LDR (scalar, L1 hit) | 8.5–10.5 | 9.5 | < 5% | [PASS] |
+| LDR (scalar, base+offset) | 9.5–11.5 | 10.5 | < 8% | [PASS] |
+| LDP (load pair) | 13.0–15.5 | 14.0 | < 6% | [PASS] |
+| STR (scalar, L1 hit) | 6.5–8.0 | 7.2 | < 5% | [PASS] |
+| STP (store pair) | 10.5–13.0 | 11.5 | < 6% | [PASS] |
+| LDXR (load exclusive) | 10.5–13.0 | 11.5 | < 6% | [PASS] |
+| STXR (store exclusive) | 8.0–10.5 | 9.0 | < 8% | [PASS] |
 
 **Cache Hierarchy Energy Costs (for reference):**
 
@@ -108,11 +108,11 @@ This document validates the energy values used in our AArch64 energy model (`llv
 
 | Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| B (unconditional branch) | 2.2–3.0 | 2.5 | < 10% | ✅ Valid |
-| Bcc (conditional branch) | 3.0–4.0 | 3.5 | < 8% | ✅ Valid |
-| BL / BLR (branch with link) | 3.5–4.5 | 3.8–4.0 | < 8% | ✅ Valid |
-| RET (return) | 2.5–3.5 | 3.0 | < 10% | ✅ Valid |
-| CBZ / CBNZ (compare & branch) | 3.0–4.0 | 3.5 | < 8% | ✅ Valid |
+| B (unconditional branch) | 2.2–3.0 | 2.5 | < 10% | [PASS] |
+| Bcc (conditional branch) | 3.0–4.0 | 3.5 | < 8% | [PASS] |
+| BL / BLR (branch with link) | 3.5–4.5 | 3.8–4.0 | < 8% | [PASS] |
+| RET (return) | 2.5–3.5 | 3.0 | < 10% | [PASS] |
+| CBZ / CBNZ (compare & branch) | 3.0–4.0 | 3.5 | < 8% | [PASS] |
 
 **Branch Prediction Impact:**
 
@@ -127,15 +127,15 @@ Branches themselves are low-energy, but branch mispredictions incur a pipeline f
 
 | Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| FADD / FSUB (single) | 4.2–5.5 | 4.8 | < 8% | ✅ Valid |
-| FADD / FSUB (double) | 4.5–6.0 | 5.2 | < 9% | ✅ Valid |
-| FMUL (single) | 8.5–10.5 | 9.5 | < 7% | ✅ Valid |
-| FMUL (double) | 9.0–11.5 | 10.2 | < 8% | ✅ Valid |
-| FDIV (single) | 24–34 | 28.0 | < 11% | ✅ Valid |
-| FDIV (double) | 30–40 | 34.0 | < 10% | ✅ Valid |
-| FSQRT (single) | 18–26 | 22.0 | < 10% | ✅ Valid |
-| FSQRT (double) | 26–36 | 30.0 | < 11% | ✅ Valid |
-| FMADD (fused multiply-add) | 9.5–12.0 | 10.5 | < 8% | ✅ Valid |
+| FADD / FSUB (single) | 4.2–5.5 | 4.8 | < 8% | [PASS] |
+| FADD / FSUB (double) | 4.5–6.0 | 5.2 | < 9% | [PASS] |
+| FMUL (single) | 8.5–10.5 | 9.5 | < 7% | [PASS] |
+| FMUL (double) | 9.0–11.5 | 10.2 | < 8% | [PASS] |
+| FDIV (single) | 24–34 | 28.0 | < 11% | [PASS] |
+| FDIV (double) | 30–40 | 34.0 | < 10% | [PASS] |
+| FSQRT (single) | 18–26 | 22.0 | < 10% | [PASS] |
+| FSQRT (double) | 26–36 | 30.0 | < 11% | [PASS] |
+| FMADD (fused multiply-add) | 9.5–12.0 | 10.5 | < 8% | [PASS] |
 
 **Analysis:** Floating-point operations are 2–10× more energy-intensive than their integer counterparts due to wider datapaths and more complex control logic. FDIV is the most expensive standard FP operation at 28–34 pJ (10× an integer ADD).
 
@@ -143,14 +143,14 @@ Branches themselves are low-energy, but branch mispredictions incur a pipeline f
 
 | Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| ADD (v4i32) | 7.0–8.5 | 7.5 | < 7% | ✅ Valid |
-| ADD (v2i64) | 7.5–9.0 | 8.0 | < 8% | ✅ Valid |
-| MUL (v4i32) | 14–18 | 16.0 | < 8% | ✅ Valid |
-| MLA (v4i32) | 15–19 | 17.0 | < 8% | ✅ Valid |
-| FADD (v4f32) | 12–15 | 13.0 | < 8% | ✅ Valid |
-| FMUL (v4f32) | 20–25 | 22.0 | < 8% | ✅ Valid |
-| FDIV (v4f32) | 80–110 | 90.0 | < 12% | ✅ Valid |
-| FMLA (v4f32) | 23–28 | 25.0 | < 8% | ✅ Valid |
+| ADD (v4i32) | 7.0–8.5 | 7.5 | < 7% | [PASS] |
+| ADD (v2i64) | 7.5–9.0 | 8.0 | < 8% | [PASS] |
+| MUL (v4i32) | 14–18 | 16.0 | < 8% | [PASS] |
+| MLA (v4i32) | 15–19 | 17.0 | < 8% | [PASS] |
+| FADD (v4f32) | 12–15 | 13.0 | < 8% | [PASS] |
+| FMUL (v4f32) | 20–25 | 22.0 | < 8% | [PASS] |
+| FDIV (v4f32) | 80–110 | 90.0 | < 12% | [PASS] |
+| FMLA (v4f32) | 23–28 | 25.0 | < 8% | [PASS] |
 
 **SIMD Energy Scaling:**
 
@@ -166,18 +166,18 @@ SIMD operations benefit from energy proportionality: doubling vector width typic
 
 | Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| DMB (data memory barrier) | 8–12 | 10.0 | < 10% | ✅ Valid |
-| DSB (data synchronization barrier) | 8–12 | 10.0 | < 10% | ✅ Valid |
-| ISB (instruction synchronization barrier) | 12–18 | 15.0 | < 10% | ✅ Valid |
-| WFI (wait for interrupt) | 0.1–0.3 | 0.2 | < 20% | ⚠️ Approximate |
+| DMB (data memory barrier) | 8–12 | 10.0 | < 10% | [PASS] |
+| DSB (data synchronization barrier) | 8–12 | 10.0 | < 10% | [PASS] |
+| ISB (instruction synchronization barrier) | 12–18 | 15.0 | < 10% | [PASS] |
+| WFI (wait for interrupt) | 0.1–0.3 | 0.2 | < 20% | [WARN] Approximate |
 
 ### 2.8 Cryptographic Operations
 
 | Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
 |---|---|---|---|---|
-| AES single round (AESE) | 10–14 | 12.0 | < 10% | ✅ Valid |
-| SHA256 hash round | 12–18 | 15.0 | < 12% | ✅ Valid |
-| CRC32 (per byte) | 7–10 | 8.0 | < 10% | ✅ Valid |
+| AES single round (AESE) | 10–14 | 12.0 | < 10% | [PASS] |
+| SHA256 hash round | 12–18 | 15.0 | < 12% | [PASS] |
+| CRC32 (per byte) | 7–10 | 8.0 | < 10% | [PASS] |
 
 ---
 
@@ -343,33 +343,33 @@ E_function = Σ(E_block) across all blocks in the function
 
 | Scenario | Expected Error | Confidence | Rationale |
 |----------|---------------|------------|-----------|
-| Compute-bound (no memory) | ±10% | 🟢 High | Core ALU/FP activity well-predicted |
-| L1-cache-friendly code | ±20% | 🟢 Medium-High | Memory hierarchy simplified |
-| Memory-intensive code | ±50% | 🟡 Medium | Cache miss behavior unpredictable |
-| Cache-thrashing code | ±100%+ | 🔴 Low | Memory wall dominates |
-| SIMD-heavy code | ±15% | 🟢 Medium-High | Vector energy scales predictably |
-| Recursive functions | ±25% | 🟡 Medium | Call/return overhead variable |
-| Branch-heavy code | ±30% | 🟡 Medium | Prediction accuracy varies |
+| Compute-bound (no memory) | ±10% | [HIGH] | Core ALU/FP activity well-predicted |
+| L1-cache-friendly code | ±20% | [HIGH] Medium-High | Memory hierarchy simplified |
+| Memory-intensive code | ±50% | [MEDIUM] | Cache miss behavior unpredictable |
+| Cache-thrashing code | ±100%+ | [LOW] | Memory wall dominates |
+| SIMD-heavy code | ±15% | [HIGH] Medium-High | Vector energy scales predictably |
+| Recursive functions | ±25% | [MEDIUM] | Call/return overhead variable |
+| Branch-heavy code | ±30% | [MEDIUM] | Prediction accuracy varies |
 
 ### 6.2 Model Fit by Use Case
 
 **High Confidence (use for optimization guidance):**
-- ✅ Comparing algorithm implementations (e.g., quicksort vs. mergesort)
-- ✅ Identifying energy hotspots (which functions consume the most energy)
-- ✅ Compiler optimization tuning (e.g., `-O2` vs. `-Os`)
-- ✅ Compute-intensive kernels (matrix multiply, FFT, convolution)
-- ✅ Educational demonstrations (understanding where energy goes)
+- [OK] Comparing algorithm implementations (e.g., quicksort vs. mergesort)
+- [OK] Identifying energy hotspots (which functions consume the most energy)
+- [OK] Compiler optimization tuning (e.g., `-O2` vs. `-Os`)
+- [OK] Compute-intensive kernels (matrix multiply, FFT, convolution)
+- [OK] Educational demonstrations (understanding where energy goes)
 
 **Medium Confidence (use with caution):**
-- ⚠️ General application profiling
-- ⚠️ Function-level energy budgeting
-- ⚠️ Library vs. hand-tuned code comparison
+- [WARN] General application profiling
+- [WARN] Function-level energy budgeting
+- [WARN] Library vs. hand-tuned code comparison
 
 **Low Confidence (do not use for):**
-- ❌ Absolute energy predictions for battery life estimation
-- ❌ Real-time energy-constrained scheduling
-- ❌ Safety-critical energy budgeting
-- ❌ Thermal/power delivery design decisions
+- [NO] Absolute energy predictions for battery life estimation
+- [NO] Real-time energy-constrained scheduling
+- [NO] Safety-critical energy budgeting
+- [NO] Thermal/power delivery design decisions
 
 ### 6.3 Validation Test Results
 
@@ -478,18 +478,18 @@ import ina219
 ```
 Instruction Category         Count     Energy Range     Validation Quality
 ──────────────────────────────────────────────────────────────────────
-Integer ALU                  180+      0.5 – 3.5 pJ     🟢 Excellent
-Integer Multiply/MAC          20+      6.5 – 8.0 pJ     🟢 Excellent
-Integer Divide                 6      16.5 – 22.0 pJ    🟢 Good
-Load (L1 hit)                 40+      8.8 – 18.0 pJ    🟢 Excellent
-Store (L1 hit)                35+      6.8 – 16.0 pJ    🟢 Excellent
-Branch                         15+     2.5 – 4.0 pJ     🟢 Excellent
-Conditional Select             15+     2.8 – 3.1 pJ     🟢 Good
-Float Scalar                  40+      3.0 – 34.0 pJ    🟢 Excellent
-NEON / SIMD                   50+      5.0 – 120.0 pJ   🟡 Good
-Crypto                        15+     8.0 – 15.0 pJ     🟡 Moderate
-Barrier / System              10+     0.2 – 15.0 pJ     🟡 Moderate
-Misc (SVC, BRK, etc.)          5      5.0 – 25.0 pJ     🟡 Moderate
+Integer ALU                  180+      0.5 – 3.5 pJ     [HIGH] Excellent
+Integer Multiply/MAC          20+      6.5 – 8.0 pJ     [HIGH] Excellent
+Integer Divide                 6      16.5 – 22.0 pJ    [HIGH] Good
+Load (L1 hit)                 40+      8.8 – 18.0 pJ    [HIGH] Excellent
+Store (L1 hit)                35+      6.8 – 16.0 pJ    [HIGH] Excellent
+Branch                         15+     2.5 – 4.0 pJ     [HIGH] Excellent
+Conditional Select             15+     2.8 – 3.1 pJ     [HIGH] Good
+Float Scalar                  40+      3.0 – 34.0 pJ    [HIGH] Excellent
+NEON / SIMD                   50+      5.0 – 120.0 pJ   [MEDIUM] Good
+Crypto                        15+     8.0 – 15.0 pJ     [MEDIUM] Moderate
+Barrier / System              10+     0.2 – 15.0 pJ     [MEDIUM] Moderate
+Misc (SVC, BRK, etc.)          5      5.0 – 25.0 pJ     [MEDIUM] Moderate
 ──────────────────────────────────────────────────────────────────────
 Total:                       ~430+   0.2 – 120.0 pJ
 ```
@@ -500,16 +500,16 @@ Total:                       ~430+   0.2 – 120.0 pJ
 
 | Check | Status | Notes |
 |-------|--------|-------|
-| Energy correlates with latency | ✅ Verified | r² > 0.85 |
-| Multi-cycle ops cost more | ✅ Verified | DIV > MUL > ADD |
-| FP ops cost more than integer | ✅ Verified | FDIV 28 pJ vs. SDIV 18 pJ |
-| Wider SIMD costs more | ✅ Verified | 128-bit ~1.5× 64-bit |
-| Memory ops cost more than ALU | ✅ Verified | LDR 9.5 pJ vs. ADD 2.8 pJ |
-| Stores cheaper than loads | ✅ Verified | STR 7.2 pJ vs. LDR 9.5 pJ |
-| Load-pair cheaper than 2 singles | ✅ Verified | LDP 14 pJ vs. 2×LDR 19 pJ |
-| Special ops more expensive | ✅ Verified | DSB 10 pJ, ISB 15 pJ |
-| Monotonic: NOP < MOV < ADD | ✅ Verified | 0.5 < 1.5 < 2.8 |
-| All opcodes have finite energy | ✅ Verified | 0.0–120.0 pJ range |
+| Energy correlates with latency | [PASS] Verified | r² > 0.85 |
+| Multi-cycle ops cost more | [PASS] Verified | DIV > MUL > ADD |
+| FP ops cost more than integer | [PASS] Verified | FDIV 28 pJ vs. SDIV 18 pJ |
+| Wider SIMD costs more | [PASS] Verified | 128-bit ~1.5× 64-bit |
+| Memory ops cost more than ALU | [PASS] Verified | LDR 9.5 pJ vs. ADD 2.8 pJ |
+| Stores cheaper than loads | [PASS] Verified | STR 7.2 pJ vs. LDR 9.5 pJ |
+| Load-pair cheaper than 2 singles | [PASS] Verified | LDP 14 pJ vs. 2×LDR 19 pJ |
+| Special ops more expensive | [PASS] Verified | DSB 10 pJ, ISB 15 pJ |
+| Monotonic: NOP < MOV < ADD | [PASS] Verified | 0.5 < 1.5 < 2.8 |
+| All opcodes have finite energy | [PASS] Verified | 0.0–120.0 pJ range |
 
 ---
 

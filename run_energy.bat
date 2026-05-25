@@ -1,6 +1,6 @@
 @echo off
 rem --------------------------------------------------------------
-rem 1️⃣  Variables – adapt only if your layout differs
+rem [1] Variables – adapt only if your layout differs
 rem --------------------------------------------------------------
 set REPO_ROOT=C:\Users\Karan\Desktop\llvm\llvm          rem <‑‑ worktree where branch karan is checked out
 set BUILD_DIR=%REPO_ROOT%\build
@@ -13,7 +13,7 @@ set REMARKS_JSON=%REPO_ROOT%\remarks.json
 set REPORT_HTML=%REPO_ROOT%\energy_report.html
 
 rem --------------------------------------------------------------
-rem 2️⃣  Build LLVM (if not already built)
+rem [2] Build LLVM (if not already built)
 rem --------------------------------------------------------------
 if not exist "%BUILD_DIR%" (
     echo *** Creating build directory …
@@ -41,7 +41,7 @@ if errorlevel 1 (
 )
 
 rem --------------------------------------------------------------
-rem 3️⃣  Compile the test program to LLVM bitcode
+rem [3] Compile the test program to LLVM bitcode
 rem --------------------------------------------------------------
 echo *** Compiling example program to bitcode …
 clang -O2 -emit-llvm -c "%TEST_SRC%" -o "%TEST_BC%"
@@ -51,7 +51,7 @@ if errorlevel 1 (
 )
 
 rem --------------------------------------------------------------
-rem 4️⃣  Run the EnergyEstimation pass and capture remarks as JSON
+rem [4] Run the EnergyEstimation pass and capture remarks as JSON
 rem --------------------------------------------------------------
 echo *** Running the EnergyEstimation pass …
 opt -load-pass-plugin="%PLUGIN_DLL%" ^
@@ -64,7 +64,7 @@ if errorlevel 1 (
 )
 
 rem --------------------------------------------------------------
-rem 5️⃣  Generate the HTML report
+rem [5] Generate the HTML report
 rem --------------------------------------------------------------
 echo *** Generating HTML report …
 python "%REPO_ROOT%\scripts\visualize_energy.py" "%REMARKS_JSON%" -o "%REPORT_HTML%"

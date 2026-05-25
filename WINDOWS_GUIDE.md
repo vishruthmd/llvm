@@ -88,12 +88,12 @@ divide_loop                    7               95.20           13.60
 ## Differences from Full LLVM Pass Version
 
 **This simplified version:**
-- ✅ Works on Windows with just Clang installed
-- ✅ Analyzes assembly code and estimates energy
-- ✅ Generates JSON and HTML reports
-- ❌ Does NOT use execution frequency weighting (assumes all instructions execute once)
-- ❌ Does NOT integrate with LLVM's optimization pipeline
-- ❌ Does NOT emit compiler remarks during compilation
+- [OK] Works on Windows with just Clang installed
+- [OK] Analyzes assembly code and estimates energy
+- [OK] Generates JSON and HTML reports
+- [NO] Does NOT use execution frequency weighting (assumes all instructions execute once)
+- [NO] Does NOT integrate with LLVM's optimization pipeline
+- [NO] Does NOT emit compiler remarks during compilation
 
 **The full version (requires LLVM dev libraries):**
 - Uses LLVM's MachineBlockFrequencyInfo for accurate frequency weighting

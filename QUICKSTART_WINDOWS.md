@@ -1,6 +1,6 @@
 # Quick Start Guide - Windows
 
-## ✅ Setup Complete!
+## [OK] Setup Complete!
 
 Your LLVM Energy Estimation tool is ready to use on Windows.
 
@@ -73,18 +73,18 @@ After running analysis, check the `output/` directory:
 
 ## What This Tool Does
 
-✅ Analyzes compiled assembly code
-✅ Estimates energy per instruction
-✅ Identifies energy hotspots
-✅ Generates JSON and HTML reports
-✅ Works on Windows with just Clang + Python
+[OK] Analyzes compiled assembly code
+[OK] Estimates energy per instruction
+[OK] Identifies energy hotspots
+[OK] Generates JSON and HTML reports
+[OK] Works on Windows with just Clang + Python
 
 ## Limitations
 
-⚠️ Static analysis only (no runtime profiling)
-⚠️ No execution frequency weighting
-⚠️ Assumes L1 cache hits
-⚠️ Based on ARM Cortex-A53 energy model
+[NOTE] Static analysis only (no runtime profiling)
+[NOTE] No execution frequency weighting
+[NOTE] Assumes L1 cache hits
+[NOTE] Based on ARM Cortex-A53 energy model
 
 ## Need Help?
 

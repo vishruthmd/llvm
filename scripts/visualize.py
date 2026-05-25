@@ -341,7 +341,7 @@ def generate_html_report(report: Dict[str, Any], output_path: str):
 </head>
 <body>
     <div class="container">
-        <h1>⚡ Static Energy Estimation Report</h1>
+        <h1>Static Energy Estimation Report</h1>
 
         {generate_summary_html(report)}
 

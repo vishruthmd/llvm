@@ -6,7 +6,7 @@
 
 ## Deliverable Breakdown
 
-### ✅ Deliverable 1 — LLVM Analysis Pass (100%)
+### [DONE] Deliverable 1 - LLVM Analysis Pass (100%)
 
 **File:** `llvm/lib/CodeGen/EnergyEstimation.cpp`
 
@@ -49,7 +49,7 @@ A fully correct `MachineFunctionPass` that:
 
 ---
 
-### ✅ Deliverable 2 — JSON Energy Model for AArch64 (100%)
+### [DONE] Deliverable 2 - JSON Energy Model for AArch64 (100%)
 
 **File:** `llvm/energy-models/aarch64.json`
 
@@ -79,7 +79,7 @@ Both canonical mnemonics (`ADD`) and LLVM-internal opcode names (`ADDWri`, `ADDX
 
 ---
 
-### ✅ Deliverable 3 — `-Rpass-analysis=energy` Remarks (100%)
+### [DONE] Deliverable 3 - `-Rpass-analysis=energy` Remarks (100%)
 
 In `EnergyEstimation.cpp`, every basic block emits a `BlockEnergy` remark and every function emits a `FunctionEnergy` remark — both tagged with `PassName = "energy"` so they are visible with:
 
@@ -105,7 +105,7 @@ Remarks are anchored to `DiagnosticLocation` derived from the first real instruc
 
 ---
 
-### ✅ Deliverable 4 — Visualization / HTML Report (100%)
+### [DONE] Deliverable 4 - Visualization / HTML Report (100%)
 
 **File:** `llvm/visualize_energy.py`
 
@@ -115,7 +115,7 @@ Pure Python 3 — zero external dependencies (stdlib only).
 - Dark-themed self-contained HTML (all CSS + JS inline, one file)
 - Sortable function summary table — click any column header to re-sort
 - Heat-map bar charts with smooth green → yellow → red colour gradient
-- HOT 🔴 (≥75%) / WARM 🟡 (≥35%) / COOL 🟢 (<35%) category badges
+- HOT (>=75%) / WARM (>=35%) / COOL (<35%) energy category badges
 - Collapsible per-function block breakdown tables (`<details>/<summary>`)
 - ASCII summary table printed to stdout with colour-coded bars
 - Flags: `--output`, `--top N`, `--min-energy`, `--title`, `--no-html`
@@ -153,7 +153,7 @@ Pure Python 3 — zero external dependencies (stdlib only).
 
 ---
 
-### ✅ Deliverable 5 — Validation Against Published Data (100%)
+### [DONE] Deliverable 5 - Validation Against Published Data (100%)
 
 **Script:** `scripts/validate_model.py`
 

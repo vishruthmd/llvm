@@ -29,7 +29,7 @@ for fname, fdata in raw.get("functions", {}).items():
     )
 
 functions.sort(key=lambda f: f["total_energy_pJ"], reverse=True)
-out = {"arch": "AArch64", "unit": "pJ", "functions": functions}
+out = {"arch": raw.get("arch", "unknown"), "unit": "pJ", "functions": functions}
 
 with open(out_file, "w") as f:
     json.dump(out, f, indent=2)
