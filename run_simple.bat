@@ -87,45 +87,7 @@ echo       Written: %OUTPUT_DIR%\energy_results_raw.json
 
 REM ── Step 4: Convert to standard format and generate HTML ─────────────────────
 echo [4/5] Converting results to standard format...
-python -c "
-import json, sys
-
-with open('output/energy_results_raw.json') as f:
-    raw = json.load(f)
-
-# Convert simple_energy_analysis output to EnergyEstimationPass output format
-functions = []
-for fname, fdata in raw.get('functions', {}).items():
-    blocks = [{
-        'name': 'body',
-        'raw_energy_pJ': fdata.get('energy_pj', 0.0),
-        'freq_scale': 1.0,
-        'weighted_energy_pJ': fdata.get('energy_pj', 0.0),
-        'instructions': fdata.get('instruction_count', 0)
-    }]
-    functions.append({
-        'name': fname,
-        'total_energy_pJ': fdata.get('energy_pj', 0.0),
-        'blocks': blocks
-    })
-
-# Sort by energy descending
-functions.sort(key=lambda f: f['total_energy_pJ'], reverse=True)
-
-out = {
-    'arch': 'AArch64',
-    'unit': 'pJ',
-    'functions': functions
-}
-with open('output/energy_results.json', 'w') as f:
-    json.dump(out, f, indent=2)
-
-print(f'  Converted {len(functions)} functions')
-total = sum(f[\"total_energy_pJ\"] for f in functions)
-print(f'  Total energy: {total:,.2f} pJ')
-if functions:
-    print(f'  Hottest function: {functions[0][\"name\"]} ({functions[0][\"total_energy_pJ\"]:,.2f} pJ)')
-"
+python scripts/convert_results.py "%OUTPUT_DIR%\energy_results_raw.json" "%OUTPUT_DIR%\energy_results.json"
 if %ERRORLEVEL% NEQ 0 (
     echo [WARN] Conversion failed, using raw format.
     copy "%OUTPUT_DIR%\energy_results_raw.json" "%OUTPUT_DIR%\energy_results.json" >nul

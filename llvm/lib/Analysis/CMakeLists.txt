@@ -5,7 +5,7 @@ add_library(EnergyModel STATIC
 )
 
 target_include_directories(EnergyModel PUBLIC
-  ${CMAKE_SOURCE_DIR}/llvm/include
+  ${CMAKE_SOURCE_DIR}/include
   ${LLVM_INCLUDE_DIRS}
 )
 

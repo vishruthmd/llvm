@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Energy Model Validation Report - ARM Cortex-A55</title>
+  <style>
+:root {
+  --pri:     #1a237e;
+  --pri-lt:  #e8eaf6;
+  --pri-bg:  #3f51b5;
+  --acc:     #ff6f00;
+  --acc-lt:  #fff8e1;
+  --bg:      #f5f5f5;
+  --surf:    #ffffff;
+  --text:    #212121;
+  --text2:   #616161;
+  --muted:   #9e9e9e;
+  --div:     #e0e0e0;
+  --green:   #2e7d32;
+  --green-bg:#e8f5e9;
+  --red:     #c62828;
+  --red-bg:  #ffebee;
+  --amber:   #e65100;
+  --mono:    'JetBrains Mono','Fira Code','Cascadia Code','Consolas',monospace;
+  --sans:   -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Oxygen,Ubuntu,sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--sans);
+  background: var(--bg); color: var(--text);
+  font-size: 14px; line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* App Bar */
+.appbar {
+  background: linear-gradient(135deg, var(--pri) 0%, #283593 100%);
+  padding: 14px 24px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  position: sticky; top: 0; z-index: 100;
+}
+.appbar h1 {
+  font-family: var(--mono);
+  font-size: 1rem; font-weight: 600; color: #fff;
+  letter-spacing: -0.3px;
+}
+.appbar .sub {
+  font-size: 0.72rem; color: rgba(255,255,255,0.7);
+  font-family: var(--sans);
+}
+.appbar .spacer { flex: 1; }
+.appbar .verdict {
+  padding: 3px 12px; border-radius: 4px;
+  font-size: 0.65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border: 1px solid;
+}
+.verdict-pass {
+  background: rgba(255,255,255,0.15); color: #fff;
+  border-color: rgba(255,255,255,0.3);
+}
+.verdict-fail {
+  background: var(--red-bg); color: var(--red);
+  border-color: var(--red);
+}
+
+.container { max-width: 1160px; margin: 0 auto; padding: 20px 20px 48px; }
+
+/* Stats row */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; margin-bottom: 16px;
+}
+.stat {
+  background: var(--surf);
+  border-radius: 8px; padding: 14px 16px 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+.stat .lbl {
+  font-size: 0.6rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.6px;
+  font-weight: 600;
+}
+.stat .val {
+  font-family: var(--mono);
+  font-size: 1.4rem; font-weight: 700; color: var(--pri);
+  margin-top: 2px;
+}
+.stat .val .sub {
+  font-family: var(--sans);
+  font-size: 0.65rem; font-weight: 400; color: var(--text2);
+}
+
+/* Cards */
+.card {
+  background: var(--surf);
+  border-radius: 8px; margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+.card-title {
+  padding: 10px 16px;
+  font-family: var(--sans);
+  font-size: 0.7rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--div);
+  display: flex; align-items: center; gap: 8px;
+  color: var(--pri);
+}
+.card-title .badge {
+  font-family: var(--mono);
+  font-size: 0.6rem; font-weight: 500;
+  padding: 1px 8px; border-radius: 3px;
+  background: var(--pri-lt); color: var(--pri);
+}
+.card-body { overflow-x: auto; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  padding: 7px 12px; text-align: left;
+  font-family: var(--sans);
+  font-size: 0.6rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.5px;
+  color: var(--text2);
+  border-bottom: 2px solid var(--div);
+  white-space: nowrap; background: var(--surf);
+}
+thead th.col-num { text-align: right; }
+th.col-range { text-align: center; }
+tbody tr {
+  border-bottom: 1px solid var(--div);
+  transition: background 0.1s;
+}
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #fafafa; }
+td {
+  padding: 5px 12px; vertical-align: middle;
+  font-family: var(--mono); font-size: 0.77rem;
+}
+
+/* Column alignment */
+.col-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+th.col-range, td.col-range {
+  text-align: center;
+  font-family: var(--mono);
+  color: var(--text2);
+  font-size: 0.72rem;
+}
+.col-pass, .col-fail {
+  font-family: var(--mono);
+  font-weight: 700; font-size: 0.65rem;
+  letter-spacing: 0.3px;
+}
+.col-pass { color: var(--green); }
+.col-fail { color: var(--red); font-weight: 800; }
+.col-err { font-size: 0.72rem; text-align: right; }
+.err-val {
+  font-weight: 600;
+  color: var(--amber);
+}
+
+/* Category header rows */
+tr.cat-row td {
+  background: var(--pri-lt);
+  color: var(--pri);
+  font-family: var(--sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--div);
+}
+
+/* Fail row */
+tr.row-fail td { background: var(--red-bg); }
+
+/* Show-more toggle */
+.show-btn {
+  display: block; width: 100%; padding: 8px;
+  background: var(--bg);
+  font-family: var(--mono);
+  font-size: 0.7rem; font-weight: 500;
+  color: var(--pri-bg);
+  border: none; border-top: 1px solid var(--div);
+  cursor: pointer; text-align: center;
+  transition: background 0.15s, color 0.15s;
+}
+.show-btn:hover {
+  background: var(--pri-lt);
+  color: var(--pri);
+}
+.opcode-wrap { max-height: 300px; overflow-y: auto; }
+.opcode-wrap.expanded { max-height: none; }
+.opcode-table thead th { position: sticky; top: 0; z-index: 1; }
+
+/* Info box — Material expansion panel style */
+.info-box {
+  padding: 12px 16px;
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 0.77rem;
+  line-height: 1.7;
+  background: var(--acc-lt);
+  color: var(--text2);
+  border-bottom: 1px solid var(--div);
+}
+.info-box strong {
+  color: var(--acc);
+  font-weight: 700;
+}
+
+/* References */
+.refs { padding: 10px 16px 14px; }
+.refs ol { margin: 0; padding-left: 18px; }
+.refs li {
+  font-family: var(--sans);
+  color: var(--text2); font-size: 0.75rem;
+  line-height: 1.9;
+}
+
+/* Responsive */
+@media (max-width: 680px) {
+  .appbar { flex-direction: column; align-items: flex-start; gap: 3px; }
+  .appbar .spacer { display: none; }
+  .stats { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  td, thead th { padding: 4px 8px; }
+  td { font-size: 0.72rem; }
+}
+</style>
+</head>
+<body>
+<div class="appbar">
+  <h1>Energy Model Validation</h1>
+  <span class="sub">llvm\energy-models\aarch64.json &middot; 624 opcodes &middot; 2026-05-25 06:00 UTC</span>
+  <span class="spacer"></span>
+  <span class="verdict verdict-pass">ALL CHECKS PASSED</span>
+</div>
+<div class="container">
+
+  <div class="stats">
+    <div class="stat">
+      <div class="lbl">Opcodes in model</div>
+      <div class="val">624</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Reference Checks</div>
+      <div class="val">58<span class="sub">/58</span></div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Consistency Checks</div>
+      <div class="val">14<span class="sub">/14</span></div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Instruction Classes</div>
+      <div class="val">8</div>
+    </div>
+    <div class="stat">
+      <div class="lbl">Max Error</div>
+      <div class="val" style="color:var(--amber)">4.8<span class="sub">%</span></div>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card-title">Reference Range Comparison</div>
+    <div class="card-body">
+      <table>
+        <thead><tr>
+          <th>Status</th><th>Instruction</th><th class="col-num">Model (pJ)</th>
+          <th class="col-num">Expected (pJ)</th><th class="col-range">Range (pJ)</th><th class="col-num">Error</th>
+        </tr></thead>
+        <tbody><tr class="cat-row"><td colspan="6">Integer ALU</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ADD / SUB</td><td class="col-num">2.80</td><td class="col-num">2.80</td><td class="col-range">[2.5, 3.2]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>AND / OR / XOR</td><td class="col-num">2.70</td><td class="col-num">2.70</td><td class="col-range">[2.4, 3.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>Shift (LSL/LSR/ASR)</td><td class="col-num">2.50</td><td class="col-num">2.50</td><td class="col-range">[2.3, 2.8]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MOV (register)</td><td class="col-num">1.50</td><td class="col-num">1.50</td><td class="col-range">[1.2, 1.8]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MOV (immediate)</td><td class="col-num">2.20</td><td class="col-num">2.20</td><td class="col-range">[1.8, 2.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>CMP / TST</td><td class="col-num">2.60</td><td class="col-num">2.60</td><td class="col-range">[2.4, 2.9]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>NEG / MVN</td><td class="col-num">2.80</td><td class="col-num">2.70</td><td class="col-range">[2.3, 2.9]</td><td class="col-num col-err"><span class="err-val">3.7%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>Extend (SXTB/UXTB)</td><td class="col-num">2.40</td><td class="col-num">2.30</td><td class="col-range">[2.0, 2.5]</td><td class="col-num col-err"><span class="err-val">4.3%</span></td></tr><tr class="cat-row"><td colspan="6">Integer Multiply / Divide</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MUL (32-bit)</td><td class="col-num">6.50</td><td class="col-num">6.50</td><td class="col-range">[5.8, 7.2]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MUL (64-bit)</td><td class="col-num">6.80</td><td class="col-num">6.80</td><td class="col-range">[6.2, 7.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MADD (multiply-add)</td><td class="col-num">7.50</td><td class="col-num">7.50</td><td class="col-range">[7.0, 8.2]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>SMULL (signed mul long)</td><td class="col-num">7.20</td><td class="col-num">7.20</td><td class="col-range">[6.8, 7.8]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>SDIV (32-bit)</td><td class="col-num">18.00</td><td class="col-num">18.00</td><td class="col-range">[15.0, 22.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>UDIV (32-bit)</td><td class="col-num">16.50</td><td class="col-num">16.50</td><td class="col-range">[14.0, 20.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>SDIV (64-bit)</td><td class="col-num">22.00</td><td class="col-num">22.00</td><td class="col-range">[18.0, 28.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>UDIV (64-bit)</td><td class="col-num">20.00</td><td class="col-num">20.00</td><td class="col-range">[17.0, 25.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="cat-row"><td colspan="6">Load / Store (L1 hit)</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDR scalar (L1 hit)</td><td class="col-num">9.50</td><td class="col-num">9.50</td><td class="col-range">[8.5, 10.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDR base+offset</td><td class="col-num">10.50</td><td class="col-num">10.50</td><td class="col-range">[9.5, 11.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDP (load pair)</td><td class="col-num">14.00</td><td class="col-num">14.00</td><td class="col-range">[13.0, 15.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>STR scalar (L1 hit)</td><td class="col-num">7.20</td><td class="col-num">7.20</td><td class="col-range">[6.5, 8.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>STP (store pair)</td><td class="col-num">11.50</td><td class="col-num">11.50</td><td class="col-range">[10.5, 13.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDXR (load exclusive)</td><td class="col-num">11.50</td><td class="col-num">11.50</td><td class="col-range">[10.5, 13.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>STXR (store exclusive)</td><td class="col-num">9.00</td><td class="col-num">9.00</td><td class="col-range">[8.0, 10.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDRB (load byte)</td><td class="col-num">8.80</td><td class="col-num">8.80</td><td class="col-range">[8.0, 10.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDRH (load halfword)</td><td class="col-num">9.00</td><td class="col-num">9.00</td><td class="col-range">[8.2, 10.2]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="cat-row"><td colspan="6">Branch Operations</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>B (unconditional)</td><td class="col-num">2.50</td><td class="col-num">2.50</td><td class="col-range">[2.2, 3.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>Bcc (conditional)</td><td class="col-num">3.50</td><td class="col-num">3.50</td><td class="col-range">[3.0, 4.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>BL / BLR (branch+link)</td><td class="col-num">3.80</td><td class="col-num">3.90</td><td class="col-range">[3.5, 4.5]</td><td class="col-num col-err"><span class="err-val">2.6%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>RET (return)</td><td class="col-num">3.00</td><td class="col-num">3.00</td><td class="col-range">[2.5, 3.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>CBZ / CBNZ (compare+branch)</td><td class="col-num">3.50</td><td class="col-num">3.50</td><td class="col-range">[3.0, 4.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>CSEL (conditional select)</td><td class="col-num">3.00</td><td class="col-num">3.00</td><td class="col-range">[2.8, 3.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="cat-row"><td colspan="6">Floating-Point Scalar</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FADD / FSUB (single)</td><td class="col-num">4.80</td><td class="col-num">4.80</td><td class="col-range">[4.2, 5.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FADD / FSUB (double)</td><td class="col-num">5.20</td><td class="col-num">5.20</td><td class="col-range">[4.5, 6.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMUL (single)</td><td class="col-num">9.50</td><td class="col-num">9.50</td><td class="col-range">[8.5, 10.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMUL (double)</td><td class="col-num">10.20</td><td class="col-num">10.20</td><td class="col-range">[9.0, 11.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV (single)</td><td class="col-num">28.00</td><td class="col-num">28.00</td><td class="col-range">[24.0, 34.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV (double)</td><td class="col-num">34.00</td><td class="col-num">34.00</td><td class="col-range">[30.0, 40.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FSQRT (single)</td><td class="col-num">22.00</td><td class="col-num">22.00</td><td class="col-range">[18.0, 26.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FSQRT (double)</td><td class="col-num">30.00</td><td class="col-num">30.00</td><td class="col-range">[26.0, 36.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMADD (fused multiply-add)</td><td class="col-num">10.50</td><td class="col-num">10.50</td><td class="col-range">[9.5, 12.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FCMP (FP compare)</td><td class="col-num">4.00</td><td class="col-num">4.20</td><td class="col-range">[3.5, 5.0]</td><td class="col-num col-err"><span class="err-val">4.8%</span></td></tr><tr class="cat-row"><td colspan="6">NEON / SIMD</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ADD v4i32 (128-bit int)</td><td class="col-num">7.50</td><td class="col-num">7.50</td><td class="col-range">[7.0, 8.5]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ADD v2i64 (128-bit int)</td><td class="col-num">8.00</td><td class="col-num">8.00</td><td class="col-range">[7.5, 9.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MUL v4i32</td><td class="col-num">16.00</td><td class="col-num">16.00</td><td class="col-range">[14.0, 18.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MLA v4i32 (multiply-acc)</td><td class="col-num">17.00</td><td class="col-num">17.00</td><td class="col-range">[15.0, 19.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FADD v4f32</td><td class="col-num">13.00</td><td class="col-num">13.00</td><td class="col-range">[12.0, 15.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMUL v4f32</td><td class="col-num">22.00</td><td class="col-num">22.00</td><td class="col-range">[20.0, 25.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV v4f32</td><td class="col-num">90.00</td><td class="col-num">90.00</td><td class="col-range">[80.0, 110.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMLA v4f32 (fused mul-acc)</td><td class="col-num">25.00</td><td class="col-num">25.00</td><td class="col-range">[23.0, 28.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FADD v2f64 (128-bit FP)</td><td class="col-num">14.00</td><td class="col-num">14.00</td><td class="col-range">[13.0, 16.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMUL v2f64</td><td class="col-num">24.00</td><td class="col-num">24.00</td><td class="col-range">[22.0, 26.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="cat-row"><td colspan="6">Barrier / System</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>DMB (data memory barrier)</td><td class="col-num">10.00</td><td class="col-num">10.00</td><td class="col-range">[8.0, 12.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>DSB (data sync barrier)</td><td class="col-num">10.00</td><td class="col-num">10.00</td><td class="col-range">[8.0, 12.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ISB (instruction sync barrier)</td><td class="col-num">15.00</td><td class="col-num">15.00</td><td class="col-range">[12.0, 18.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>MSR / MRS (system register)</td><td class="col-num">8.00</td><td class="col-num">8.00</td><td class="col-range">[7.0, 10.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="cat-row"><td colspan="6">Cryptographic</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>AESE (AES single round)</td><td class="col-num">12.00</td><td class="col-num">12.00</td><td class="col-range">[10.0, 14.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>SHA256H (SHA256 hash round)</td><td class="col-num">15.00</td><td class="col-num">15.00</td><td class="col-range">[12.0, 18.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>CRC32 (per byte)</td><td class="col-num">8.00</td><td class="col-num">8.00</td><td class="col-range">[7.0, 10.0]</td><td class="col-num col-err"><span class="err-val">0.0%</span></td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">Structural Consistency Checks</div>
+    <div class="card-body">
+      <table>
+        <thead><tr><th>Status</th><th>Check</th><th>Detail</th></tr></thead>
+        <tbody><tr class="row-pass"><td class="col-pass">PASS</td><td>NOP &lt; MOV &lt; ADD (monotonicity)</td><td class="col-mono">NOP=0.50, MOV=1.50, ADD=2.80</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>DIV (18) &gt; MUL (6.5) &gt; ADD (2.8) — multi-cycle ops cost more</td><td class="col-mono">SDIV=18.00 &gt; MUL=6.50 &gt; ADD=2.80</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV (28) &gt; FMUL (9.5) &gt; FADD (4.8) — FP multi-cycle ordering</td><td class="col-mono">FDIV=28.00 &gt; FMUL=9.50 &gt; FADD=4.80</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV (28) &gt; SDIV (18) — FP ops cost more than integer</td><td class="col-mono">FDIV=28.00 vs SDIV=18.00</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDR (9.5) &gt; ADD (2.8) — memory ops cost more than ALU</td><td class="col-mono">LDR=9.50 &gt; ADD=2.80</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>STR (7.2) &lt; LDR (9.5) — stores cheaper than loads</td><td class="col-mono">STR=7.20 &lt; LDR=9.50</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>LDP (14) &lt; 2 x LDR (19) — load-pair cheaper than 2 singles</td><td class="col-mono">LDP=14.00 &lt; 2LDR=9.50</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>STP (11.5) &lt; 2 x STR (14.4) — store-pair cheaper than 2 singles</td><td class="col-mono">STP=11.50 &lt; 2STR=7.20</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FDIV v4f32 (90) &gt; FDIV scalar (28) — SIMD &gt; scalar</td><td class="col-mono">FDIVv4f32=90.00 &gt; FDIV=28.00</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ADD v4i32 (7.5) &gt; ADD scalar (2.8) — SIMD &gt; scalar ALU</td><td class="col-mono">ADDv4i32=7.50 &gt; ADD=2.80</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>ISB (15) &gt; DMB/DSB (10) — instruction sync costs more</td><td class="col-mono">ISB=15.00 &gt; DSB=10.00, DMB=10.00</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>FMADD (10.5) &gt; FMUL (9.5) — fused multiply-add costs at least as much as multiply</td><td class="col-mono">FMADD=10.50 &gt;= FMUL=9.50</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>All opcodes have non-negative energy</td><td class="col-mono">All 624 opcodes &gt;= 0</td></tr><tr class="row-pass"><td class="col-pass">PASS</td><td>64-bit ops cost &gt;= 32-bit variants (same opcode family)</td><td class="col-mono">ADDXri=2.90 &gt;= ADDWri=2.80, MULXr=6.80 &gt;= MULWr=6.50</td></tr></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card"><div class="card-title">Unreferenced Opcodes <span class="badge">476</span></div><div class="card-body"><div class="info-box"><strong>What are unreferenced opcodes?</strong><br><br>These are opcodes present in the energy model but not part of the 58 reference-group comparisons above. Most are <strong>LLVM-internal variants</strong> &mdash; different machine encoding forms of the same base instruction. For example, ADDWri, ADDXrs, ADDv16i8, ADDv8i8 are all variants of the ADD instruction. Each still has a properly assigned energy value and contributes to all estimates &mdash; they are simply not validated against published measurements because papers only publish values for canonical instruction forms.</div><div class="opcode-wrap"><table class="opcode-table"><thead><tr><th>Opcode</th><th class="col-num">Energy (pJ)</th></tr></thead><tbody><tr><td class="col-mono">ADC</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ADCS</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ADCSWr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ADCSXr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">ADCWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ADCXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ADDSWri</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ADDSWrs</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">ADDSWrx</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">ADDSXri</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ADDSXrs</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">ADDSXrx</td><td class="col-num">3.40</td></tr><tr><td class="col-mono">ADDWrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ADDWrx</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">ADDXrs</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">ADDXrx</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">ADDv16i8</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">ADDv2i32</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">ADDv4i16</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">ADDv8i16</td><td class="col-num">7.20</td></tr><tbody id="more" style="display:none"><tr><td class="col-mono">ADDv8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">ADR</td><td class="col-num">2.50</td></tr><tr><td class="col-mono">ADRP</td><td class="col-num">2.50</td></tr><tr><td class="col-mono">AESDrr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">AESIMCrr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">AESMCrr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">ANDS</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">ANDSWri</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">ANDSWrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ANDSXri</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ANDSXrs</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">ANDWrs</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ANDXri</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">ANDXrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ANDv16i8</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">ANDv8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">ASRWrr</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">ASRXri</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">ASRXrr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">BIC</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">BICS</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">BICSWrs</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">BICSXrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">BICWrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">BICXrs</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">BICv16i8</td><td class="col-num">7.20</td></tr><tr><td class="col-mono">BICv8i8</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">BR</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">BRK</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">BRx</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">CBNZXri</td><td class="col-num">3.60</td></tr><tr><td class="col-mono">CBZXri</td><td class="col-num">3.60</td></tr><tr><td class="col-mono">CCMN</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMNWi</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMNWr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMNXi</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CCMNXr</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CCMP</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMPWi</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMPWr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CCMPXi</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CCMPXr</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CINC</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CINCWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CINCXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">CINV</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CINVWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CINVXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">CLS</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CLSWr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CLSXr</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CLZ</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CLZWr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">CLZXr</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">CMN</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">CMNWri</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">CMNWrs</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CMNXri</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">CMNXrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">CMPWrs</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CMPWrx</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">CMPXrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">CMPXrx</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CNEG</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CNEGWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CNEGXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">CNTv16i8</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">CNTv8i8</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">CRC32CBrr</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">CRC32CHrr</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">CRC32CWrr</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">CRC32CXrr</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">CRC32Xrr</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">CSET</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CSETM</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CSETMWr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CSETMXr</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">CSETWr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">CSETXr</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">CSINC</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSINCWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSINCXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">CSINV</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSINVWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSINVXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">CSNEG</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSNEGWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">CSNEGXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">DUPv16i8gpr</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">DUPv2i32lane</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">DUPv2i64lane</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">DUPv4i16gpr</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">DUPv4i32lane</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">DUPv8i16gpr</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">DUPv8i8gpr</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">EON</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">EONWrs</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">EONXrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">EORWrs</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">EORXri</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">EORXrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">EORv16i8</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">EORv8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">ERET</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">EXTR</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">EXTRWrri</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">EXTRXrri</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">EXTv16i8</td><td class="col-num">6.50</td></tr><tr><td class="col-mono">EXTv8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">FABS</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FABSDr</td><td class="col-num">3.70</td></tr><tr><td class="col-mono">FABSSr</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FADDv2f32</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">FCCMP</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FCCMPDrr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FCCMPSrr</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FCMPDri</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FCMPSri</td><td class="col-num">3.80</td></tr><tr><td class="col-mono">FCSELDrrr</td><td class="col-num">3.80</td></tr><tr><td class="col-mono">FCSELSrrr</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FCVT</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">FCVTDSr</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">FCVTSDr</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">FCVTZS</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">FCVTZSDWr</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">FCVTZSDXr</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">FCVTZSSWr</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">FCVTZSSXr</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">FCVTZU</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">FCVTZUDWr</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">FCVTZUDXr</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">FCVTZUSWr</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">FCVTZUSXr</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">FDIVv2f32</td><td class="col-num">55.00</td></tr><tr><td class="col-mono">FDIVv2f64</td><td class="col-num">120.00</td></tr><tr><td class="col-mono">FMAX</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMAXDrr</td><td class="col-num">4.30</td></tr><tr><td class="col-mono">FMAXNM</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMAXNMDrr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FMAXNMSrr</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMAXSrr</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMIN</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMINDrr</td><td class="col-num">4.30</td></tr><tr><td class="col-mono">FMINNM</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMINNMDrr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FMINNMSrr</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMINSrr</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMLAv2f32</td><td class="col-num">18.00</td></tr><tr><td class="col-mono">FMLAv2f64</td><td class="col-num">28.00</td></tr><tr><td class="col-mono">FMLSv2f32</td><td class="col-num">18.00</td></tr><tr><td class="col-mono">FMLSv2f64</td><td class="col-num">28.00</td></tr><tr><td class="col-mono">FMLSv4f32</td><td class="col-num">25.00</td></tr><tr><td class="col-mono">FMOV</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">FMOVDXr</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMOVDr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">FMOVSWr</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMOVSr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">FMOVWSr</td><td class="col-num">4.00</td></tr><tr><td class="col-mono">FMOVXDr</td><td class="col-num">4.20</td></tr><tr><td class="col-mono">FMOVdi</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">FMOVsi</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">FMSUB</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">FMSUBDrrr</td><td class="col-num">11.50</td></tr><tr><td class="col-mono">FMSUBSrrr</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">FMULv2f32</td><td class="col-num">16.00</td></tr><tr><td class="col-mono">FNEG</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FNEGDr</td><td class="col-num">3.70</td></tr><tr><td class="col-mono">FNEGSr</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FNMADD</td><td class="col-num">10.80</td></tr><tr><td class="col-mono">FNMADDDrrr</td><td class="col-num">11.80</td></tr><tr><td class="col-mono">FNMADDSrrr</td><td class="col-num">10.80</td></tr><tr><td class="col-mono">FNMSUB</td><td class="col-num">10.80</td></tr><tr><td class="col-mono">FNMSUBDrrr</td><td class="col-num">11.80</td></tr><tr><td class="col-mono">FNMSUBSrrr</td><td class="col-num">10.80</td></tr><tr><td class="col-mono">FRINTA</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTADr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTASr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTI</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTIDr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTISr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTM</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTMDr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTMSr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTN</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTNDr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTNSr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTP</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTPDr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTPSr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTX</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTXDr</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">FRINTXSr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTZ</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FRINTZDr</td><td class="col-num">4.80</td></tr><tr><td class="col-mono">FRINTZSr</td><td class="col-num">4.50</td></tr><tr><td class="col-mono">FSEL</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">FSUBv2f32</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">FSUBv2f64</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">FSUBv4f32</td><td class="col-num">13.00</td></tr><tr><td class="col-mono">HLT</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">INSvi32gpr</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">INSvi32lane</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">INSvi64gpr</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">INSvi64lane</td><td class="col-num">5.20</td></tr><tr><td class="col-mono">LD1Onev16b</td><td class="col-num">12.50</td></tr><tr><td class="col-mono">LD1Onev1d</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LD1Onev2d</td><td class="col-num">12.50</td></tr><tr><td class="col-mono">LD1Onev2s</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LD1Onev4h</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LD1Onev4s</td><td class="col-num">12.50</td></tr><tr><td class="col-mono">LD1Onev8b</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LD1Onev8h</td><td class="col-num">12.50</td></tr><tr><td class="col-mono">LD2Twov16b</td><td class="col-num">16.00</td></tr><tr><td class="col-mono">LD2Twov8b</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">LD3Threev16b</td><td class="col-num">20.00</td></tr><tr><td class="col-mono">LD3Threev8b</td><td class="col-num">17.00</td></tr><tr><td class="col-mono">LD4Fourv16b</td><td class="col-num">24.00</td></tr><tr><td class="col-mono">LD4Fourv8b</td><td class="col-num">20.00</td></tr><tr><td class="col-mono">LDAR</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">LDARB</td><td class="col-num">11.50</td></tr><tr><td class="col-mono">LDARBr</td><td class="col-num">11.50</td></tr><tr><td class="col-mono">LDARH</td><td class="col-num">11.80</td></tr><tr><td class="col-mono">LDARHr</td><td class="col-num">11.80</td></tr><tr><td class="col-mono">LDARWr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">LDARXr</td><td class="col-num">12.50</td></tr><tr><td class="col-mono">LDNP</td><td class="col-num">13.50</td></tr><tr><td class="col-mono">LDNPWi</td><td class="col-num">13.50</td></tr><tr><td class="col-mono">LDNPXi</td><td class="col-num">14.50</td></tr><tr><td class="col-mono">LDPDpost</td><td class="col-num">15.50</td></tr><tr><td class="col-mono">LDPDpre</td><td class="col-num">15.50</td></tr><tr><td class="col-mono">LDPQi</td><td class="col-num">18.00</td></tr><tr><td class="col-mono">LDPSpost</td><td class="col-num">14.50</td></tr><tr><td class="col-mono">LDPSpre</td><td class="col-num">14.50</td></tr><tr><td class="col-mono">LDRBBro</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">LDRBBroX</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">LDRBui</td><td class="col-num">9.00</td></tr><tr><td class="col-mono">LDRHHro</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">LDRHHroX</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">LDRHui</td><td class="col-num">9.20</td></tr><tr><td class="col-mono">LDRSB</td><td class="col-num">9.20</td></tr><tr><td class="col-mono">LDRSBWui</td><td class="col-num">9.20</td></tr><tr><td class="col-mono">LDRSBXui</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">LDRSH</td><td class="col-num">9.30</td></tr><tr><td class="col-mono">LDRSHWui</td><td class="col-num">9.30</td></tr><tr><td class="col-mono">LDRSHXui</td><td class="col-num">9.60</td></tr><tr><td class="col-mono">LDRSW</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">LDRSWl</td><td class="col-num">11.20</td></tr><tr><td class="col-mono">LDRSWro</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">LDRSWroX</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">LDRSWui</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">LDRWl</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LDRWpost</td><td class="col-num">10.20</td></tr><tr><td class="col-mono">LDRWpre</td><td class="col-num">10.20</td></tr><tr><td class="col-mono">LDRWroX</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">LDRXl</td><td class="col-num">11.50</td></tr><tr><td class="col-mono">LDRXpost</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">LDRXpre</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">LDRXroX</td><td class="col-num">10.80</td></tr><tr><td class="col-mono">LDXRB</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LDXRBr</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">LDXRH</td><td class="col-num">11.20</td></tr><tr><td class="col-mono">LDXRHr</td><td class="col-num">11.20</td></tr><tr><td class="col-mono">LSLWrr</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">LSLXri</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">LSLXrr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">LSRWrr</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">LSRXri</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">LSRXrr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">MLAv2i32</td><td class="col-num">13.00</td></tr><tr><td class="col-mono">MLSv2i32</td><td class="col-num">13.00</td></tr><tr><td class="col-mono">MLSv4i32</td><td class="col-num">17.00</td></tr><tr><td class="col-mono">MNEG</td><td class="col-num">6.80</td></tr><tr><td class="col-mono">MNEGWr</td><td class="col-num">6.80</td></tr><tr><td class="col-mono">MNEGXr</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">MOVKXi</td><td class="col-num">2.30</td></tr><tr><td class="col-mono">MOVN</td><td class="col-num">2.20</td></tr><tr><td class="col-mono">MOVNWi</td><td class="col-num">2.20</td></tr><tr><td class="col-mono">MOVNXi</td><td class="col-num">2.30</td></tr><tr><td class="col-mono">MOVXr</td><td class="col-num">1.60</td></tr><tr><td class="col-mono">MOVZXi</td><td class="col-num">2.30</td></tr><tr><td class="col-mono">MSUB</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">MSUBWrrr</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">MSUBXrrr</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">MULH</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">MULv2i32</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">MULv4i16</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">MULv8i16</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">MVNXr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">NEGS</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">NEGSWr</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">NEGSXr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">NEGXr</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">ORN</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">ORNWrs</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">ORNXrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">ORNv16i8</td><td class="col-num">7.20</td></tr><tr><td class="col-mono">ORNv8i8</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">ORRWrs</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">ORRXri</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">ORRXrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ORRv16i8</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">ORRv8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">PMULL</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">PMULLv16i8</td><td class="col-num">15.00</td></tr><tr><td class="col-mono">PMULLv8i8</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">PRFM</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">PRFMl</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">PRFMro</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">PRFMroX</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">PRFMui</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">RBIT</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">RBITWr</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">RBITXr</td><td class="col-num">3.60</td></tr><tr><td class="col-mono">REV</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REV16</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REV16Wr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REV16Xr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">REV16v8i8</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">REV32</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REV32Xr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REV32v8i8</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">REV64v2i32</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">REV64v4i16</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">REV64v8i8</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">REVWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">REVXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">ROR</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">RORWri</td><td class="col-num">2.60</td></tr><tr><td class="col-mono">RORWrr</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">RORXri</td><td class="col-num">2.70</td></tr><tr><td class="col-mono">RORXrr</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">SBC</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">SBCS</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">SBCSWr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">SBCSXr</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">SBCWr</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">SBCXr</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">SCVTF</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">SCVTFDWri</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">SCVTFDXri</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">SCVTFSWri</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">SCVTFSXri</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">SHA1Crrr</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">SHA1Hss</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">SHA1Mrrr</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">SHA1Prrr</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">SHA1SU0rrr</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">SHA1SU1rr</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">SHA256SU0rr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">SHA256SU1rrr</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">SMADDL</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">SMSUBL</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">SMSUBLrrr</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">SMULHrr</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">ST1Onev16b</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">ST1Onev1d</td><td class="col-num">9.00</td></tr><tr><td class="col-mono">ST1Onev2d</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">ST1Onev2s</td><td class="col-num">9.00</td></tr><tr><td class="col-mono">ST1Onev4h</td><td class="col-num">9.00</td></tr><tr><td class="col-mono">ST1Onev4s</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">ST1Onev8b</td><td class="col-num">9.00</td></tr><tr><td class="col-mono">ST1Onev8h</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">ST2Twov16b</td><td class="col-num">14.00</td></tr><tr><td class="col-mono">ST2Twov8b</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">ST3Threev16b</td><td class="col-num">18.00</td></tr><tr><td class="col-mono">ST3Threev8b</td><td class="col-num">15.00</td></tr><tr><td class="col-mono">ST4Fourv16b</td><td class="col-num">22.00</td></tr><tr><td class="col-mono">ST4Fourv8b</td><td class="col-num">18.00</td></tr><tr><td class="col-mono">STLR</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">STLRB</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">STLRBr</td><td class="col-num">9.50</td></tr><tr><td class="col-mono">STLRH</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">STLRHr</td><td class="col-num">9.80</td></tr><tr><td class="col-mono">STLRWr</td><td class="col-num">10.00</td></tr><tr><td class="col-mono">STLRXr</td><td class="col-num">10.50</td></tr><tr><td class="col-mono">STNP</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">STNPWi</td><td class="col-num">11.00</td></tr><tr><td class="col-mono">STNPXi</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">STPDpost</td><td class="col-num">13.00</td></tr><tr><td class="col-mono">STPDpre</td><td class="col-num">13.00</td></tr><tr><td class="col-mono">STPQi</td><td class="col-num">16.00</td></tr><tr><td class="col-mono">STPSpost</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">STPSpre</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">STRB</td><td class="col-num">6.80</td></tr><tr><td class="col-mono">STRBBro</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">STRBBroX</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">STRBBui</td><td class="col-num">6.80</td></tr><tr><td class="col-mono">STRBui</td><td class="col-num">6.80</td></tr><tr><td class="col-mono">STRH</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">STRHHro</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">STRHHroX</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">STRHHui</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">STRHui</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">STRWpost</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">STRWpre</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">STRWro</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">STRWroX</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">STRXpost</td><td class="col-num">8.10</td></tr><tr><td class="col-mono">STRXpre</td><td class="col-num">8.10</td></tr><tr><td class="col-mono">STRXro</td><td class="col-num">8.30</td></tr><tr><td class="col-mono">STRXroX</td><td class="col-num">8.30</td></tr><tr><td class="col-mono">STXRB</td><td class="col-num">8.50</td></tr><tr><td class="col-mono">STXRBr</td><td class="col-num">8.50</td></tr><tr><td class="col-mono">STXRH</td><td class="col-num">8.80</td></tr><tr><td class="col-mono">STXRHr</td><td class="col-num">8.80</td></tr><tr><td class="col-mono">SUBSWri</td><td class="col-num">3.00</td></tr><tr><td class="col-mono">SUBSWrs</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">SUBSWrx</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">SUBSXri</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">SUBSXrs</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">SUBSXrx</td><td class="col-num">3.40</td></tr><tr><td class="col-mono">SUBWrs</td><td class="col-num">3.10</td></tr><tr><td class="col-mono">SUBWrx</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">SUBXrs</td><td class="col-num">3.20</td></tr><tr><td class="col-mono">SUBXrx</td><td class="col-num">3.30</td></tr><tr><td class="col-mono">SUBv2i32</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">SUBv2i64</td><td class="col-num">8.00</td></tr><tr><td class="col-mono">SUBv4i32</td><td class="col-num">7.50</td></tr><tr><td class="col-mono">SVC</td><td class="col-num">25.00</td></tr><tr><td class="col-mono">SXTBXr</td><td class="col-num">2.50</td></tr><tr><td class="col-mono">SXTH</td><td class="col-num">2.40</td></tr><tr><td class="col-mono">SXTHWr</td><td class="col-num">2.40</td></tr><tr><td class="col-mono">SXTHXr</td><td class="col-num">2.50</td></tr><tr><td class="col-mono">SXTW</td><td class="col-num">2.40</td></tr><tr><td class="col-mono">SXTWXr</td><td class="col-num">2.40</td></tr><tr><td class="col-mono">SYS</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">SYSL</td><td class="col-num">12.00</td></tr><tr><td class="col-mono">TBNZ</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">TBNZWri</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">TBNZXri</td><td class="col-num">3.60</td></tr><tr><td class="col-mono">TBZ</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">TBZWri</td><td class="col-num">3.50</td></tr><tr><td class="col-mono">TBZXri</td><td class="col-num">3.60</td></tr><tr><td class="col-mono">TRN1v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">TRN2v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">TSTWrs</td><td class="col-num">2.80</td></tr><tr><td class="col-mono">TSTXrs</td><td class="col-num">2.90</td></tr><tr><td class="col-mono">UCVTF</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">UCVTFSWri</td><td class="col-num">5.50</td></tr><tr><td class="col-mono">UCVTFSXri</td><td class="col-num">5.80</td></tr><tr><td class="col-mono">UMADDL</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">UMADDLrrr</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">UMSUBL</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">UMSUBLrrr</td><td class="col-num">7.80</td></tr><tr><td class="col-mono">UMULHrr</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">UMULL</td><td class="col-num">7.00</td></tr><tr><td class="col-mono">UXTH</td><td class="col-num">2.20</td></tr><tr><td class="col-mono">UXTHWr</td><td class="col-num">2.20</td></tr><tr><td class="col-mono">UZP1v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">UZP2v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">WFE</td><td class="col-num">0.20</td></tr><tr><td class="col-mono">WFI</td><td class="col-num">0.20</td></tr><tr><td class="col-mono">ZIP1v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">ZIP1v4i32</td><td class="col-num">6.00</td></tr><tr><td class="col-mono">ZIP2v2i32</td><td class="col-num">5.00</td></tr><tr><td class="col-mono">ZIP2v4i32</td><td class="col-num">6.00</td></tr></tbody></tbody></table></div><button class="show-btn" onclick="(function(b){var w=b.parentElement.querySelector('.opcode-wrap');var m=w.querySelector('#more');if(m&&m.style.display==='none'){m.style.display='';w.classList.add('expanded');b.textContent='Show less \u25B2'}else if(m){m.style.display='none';w.classList.remove('expanded');b.textContent='Show all ' + b.dataset.total + ' opcodes \u25BC'}})(this)" data-total="476">Show all 476 opcodes ▼</button></div></section>
+
+  <section class="card">
+    <div class="card-title">References</div>
+    <div class="refs">
+      <ol>
+        <li>ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A, Rev 3)</li>
+        <li>Pallister et al., &quot;BEEBS: Open Benchmarks for Energy Measurements on Embedded Platforms&quot;, 2013</li>
+        <li>Tiwari et al., &quot;Power analysis of embedded software&quot;, IEEE TVLSI 1994</li>
+        <li>Nunez-Yanez, &quot;Energy measurement and modeling of ARM Cortex-A processors&quot;, IEEE TC 2017</li>
+        <li>Kerrison &amp; Eder, &quot;Energy modeling of software for a hardware multithreaded embedded microprocessor&quot;, ACM TECS 2015</li>
+        <li>Abdelhadi &amp; Bhattacharyya, &quot;Energy modeling for superscalar processors&quot;, ACM TECS 2016</li>
+      </ol>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
