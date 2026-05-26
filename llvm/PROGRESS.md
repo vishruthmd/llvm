@@ -153,17 +153,19 @@ Pure Python 3 — zero external dependencies (stdlib only).
 
 ---
 
-### [DONE] Deliverable 5 - Validation Against Published Data (100%)
+### [DONE] Deliverable 5 - Cross-Check Against Published Data (100%)
+
+> **⚠️ Important:** The word "validation" here means **cross-checking against published reference ranges** from different hardware (older process nodes). It does NOT mean measurement against physical hardware.
 
 **Script:** `scripts/validate_model.py`
 
-A standalone Python script that automatically cross-checks the `aarch64.json` energy model against a curated reference dataset compiled from published academic research:
+A standalone Python script that cross-checks the `aarch64.json` energy model against a curated reference dataset compiled from published academic research:
 
 | Metric | Result |
 |---|---|
-| Reference comparisons (Nunez-Yanez, Pallister, Tiwari, ARM guide) | **58 passed, 0 failed** |
+| Reference cross-checks (Nunez-Yanez, Pallister, Tiwari, ARM guide) | **58 consistent, 0 out of range** |
 | Structural consistency checks (monotonicity, ordering, bounds) | **14 passed, 0 failed** |
-| Worst error vs. published data | **FCMP at 4.8%** (< 12% threshold) |
+| Max deviation from reference range midpoint | **FCMP at 4.8%** (within reference range) |
 | Coverage | 430+ opcodes across 10 instruction categories |
 
 **Run it:**
@@ -171,56 +173,56 @@ A standalone Python script that automatically cross-checks the `aarch64.json` en
 python scripts/validate_model.py --model llvm/energy-models/aarch64.json --output validation_report.html
 ```
 
-**Also in `README.md` and `aarch64.json`:**
+**Cross-check table (model vs. published ranges):**
 
-Validation table comparing model values against Pallister et al. measured ranges:
-
-| Instruction Class | Our Model (pJ) | Pallister et al. (pJ) | ARM Guide Cycles | % Error |
+| Instruction Class | Our Model (pJ) | Published Range (pJ) | ARM Guide Cycles | In Range? |
 |---|---|---|---|---|
-| Integer ALU (ADD/SUB) | 2.8 | 2.5–3.2 | 1 cycle | < 8% |
-| Multiply (MUL) | 6.5 | 5.8–7.2 | 3 cycles | < 6% |
-| Divide (SDIV) | 18.0 | 15–22 | 8–20 cycles | < 12% |
-| Load L1 hit (LDR) | 9.5 | 8.5–10.5 | 4 cycles | < 5% |
-| Store (STR) | 7.2 | 6.5–8.0 | 1 cycle | < 5% |
-| Float add (FADD) | 4.8 | 4.2–5.5 | 2 cycles | < 8% |
-| Float div (FDIV) | 28.0 | 24–35 | 12–16 cycles | < 11% |
+| Integer ALU (ADD/SUB) | 2.8 | 2.5–3.2 | 1 cycle | YES |
+| Multiply (MUL) | 6.5 | 5.8–7.2 | 3 cycles | YES |
+| Divide (SDIV) | 18.0 | 15–22 | 8–20 cycles | YES |
+| Load L1 hit (LDR) | 9.5 | 8.5–10.5 | 4 cycles | YES |
+| Store (STR) | 7.2 | 6.5–8.0 | 1 cycle | YES |
+| Float add (FADD) | 4.8 | 4.2–5.5 | 2 cycles | YES |
+| Float div (FDIV) | 28.0 | 24–35 | 12–16 cycles | YES |
 
-*Methodology: Energy = Power × Time. At 1800 MHz / 0.8 V, 1 cycle ≈ 0.56 ns.*
-
-**Known limitations documented:**
-- Static frequency estimation (±30% on branch-heavy code)
+**Known limitations (see VALIDATION.md for full details):**
+- Values are **informed by**, not verified against, measured 7 nm data
+- Published references are from 28 nm / 45 nm processors, scaled downward
+- No hardware validation has been performed
 - L1 hit assumed for all loads/stores
-- No operand switching activity modelled
-- SIMD costs assume fixed vector width
 
 ---
 
 ## What's Built — File Summary
 
 ```
+# -- Inside llvm/ subdirectory --
 llvm/
 ├── CMakeLists.txt                  outer CMake — find_package(LLVM), add_subdirectory
-├── README.md                       full project documentation
 ├── PROGRESS.md                     this file
 ├── visualize_energy.py             HTML + ASCII report generator (712 lines)
-├── scripts/
-│   └── validate_model.py           automated reference cross-validation (650+ lines)
 ├── energy-models/
 │   └── aarch64.json                ARM Cortex-A55 model — 400+ opcodes (727 lines)
 ├── test/
 │   ├── sample.c                    12-function test — ALU, FP, NEON, recursion (270 lines)
 │   └── run_test.sh                 end-to-end pipeline script
-└── llvm/
-    ├── CMakeLists.txt              inner CMake — add_subdirectory(lib/...)
-    ├── include/llvm/Analysis/
-    │   └── EnergyModel.h           fixed header — StringMap<double> (51 lines)
-    └── lib/
-        ├── Analysis/
-        │   ├── EnergyModel.cpp     fixed JSON loader (83 lines)
-        │   └── CMakeLists.txt
-        └── CodeGen/
-            ├── EnergyEstimation.cpp  correct MachineFunctionPass (417 lines)
-            └── CMakeLists.txt
+├── include/llvm/Analysis/
+│   └── EnergyModel.h               fixed header — StringMap<double> (51 lines)
+└── lib/
+    ├── Analysis/
+    │   ├── EnergyModel.cpp          fixed JSON loader (83 lines)
+    │   └── CMakeLists.txt
+    └── CodeGen/
+        ├── EnergyEstimation.cpp     correct MachineFunctionPass (417 lines)
+        └── CMakeLists.txt
+
+# -- At repo root (siblings of llvm/) --
+README.md                            full project documentation
+scripts/
+├── simple_energy_analysis.py        assembly-level energy estimator
+├── convert_results.py               converts raw results to standard format
+├── validate_model.py                automated reference cross-check (650+ lines)
+└── visualize.py                     legacy HTML report generator
 ```
 
 **Total: ~3,100 lines of new/fixed code across 17 files.**

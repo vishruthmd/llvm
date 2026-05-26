@@ -2,18 +2,20 @@
 
 ## Static Energy Estimation for ARM Cortex-A55
 
-This document validates the energy values used in our AArch64 energy model (`llvm/energy-models/aarch64.json`) against published academic research, ARM technical documentation, and established energy modeling methodologies.
+This document describes how the AArch64 energy model (`llvm/energy-models/aarch64.json`) was constructed and cross-checked against published academic research, ARM technical documentation, and established energy modeling methodologies.
+
+> **⚠️ IMPORTANT DISCLAIMER:** This is a **static, heuristic energy model** — not a validated physical measurement. The values below are **informed by**, not verified against, published data. All percentages represent **consistency with published ranges**, not measured accuracy. See [Known Limitations](#7-known-limitations) for details.
 
 ---
 
 ## Table of Contents
 
 1. [Primary References](#1-primary-references)
-2. [Instruction Class Validation](#2-instruction-class-validation)
+2. [Instruction Class Cross-Check](#2-instruction-class-cross-check)
 3. [Per-Instruction Energy Breakdown](#3-per-instruction-energy-breakdown)
 4. [Cross-Architecture Comparison](#4-cross-architecture-comparison)
-5. [Validation Methodology](#5-validation-methodology)
-6. [Accuracy Assessment](#6-accuracy-assessment)
+5. [Model Construction Methodology](#5-model-construction-methodology)
+6. [Confidence Assessment](#6-confidence-assessment)
 7. [Known Limitations](#7-known-limitations)
 8. [References](#8-references)
 
@@ -28,7 +30,7 @@ This document validates the energy values used in our AArch64 energy model (`llv
 | **Document** | ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A, Rev 3) |
 | **Published** | 2019 |
 | **Content** | Instruction latencies, pipeline structure, execution units |
-| **Use** | Energy correlates strongly with latency: more cycles → more energy |
+| **Use** | Latency values used as a proxy for relative energy cost |
 
 ### 1.2 Academic Literature
 
@@ -44,140 +46,122 @@ This document validates the energy values used in our AArch64 energy model (`llv
 
 | Parameter | Value |
 |-----------|-------|
-| Core | ARM Cortex-A55 |
-| Process | 7 nm (TSMC) |
-| Frequency | 1800 MHz |
-| Voltage | 0.8 V |
+| Core | ARM Cortex-A55 (energy values derived via latency scaling and published data) |
+| Process | 7 nm (TSMC) — assumed; exact values are proprietary |
+| Frequency | 1800 MHz (nominal) |
+| Voltage | 0.8 V (typical) |
 | Unit | picojoules (pJ) |
 | Opcodes | 400+ |
 
 ---
 
-## 2. Instruction Class Validation
+## 2. Instruction Class Cross-Check
+
+> **What this means:** Each table below shows the *reference range* from published literature alongside our model's chosen value. The "Difference" column shows how far our selected value is from the *center* of the reference range. This is NOT a measured error — it is a **consistency check** showing our values are within the ballpark of published data on different hardware.
 
 ### 2.1 Integer ALU Operations
 
-| Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| ADD / SUB | 2.5–3.2 | 2.8 | < 8% | [PASS] |
-| AND / OR / XOR | 2.4–3.0 | 2.7 | < 8% | [PASS] |
-| Shift (LSL/LSR/ASR) | 2.3–2.8 | 2.5 | < 7% | [PASS] |
-| MOV (register) | 1.2–1.8 | 1.5 | < 10% | [PASS] |
-| CMP / TST | 2.4–2.9 | 2.6 | < 7% | [PASS] |
+| Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| ADD / SUB | 2.5–3.2 | 2.8 | YES |
+| AND / OR / XOR | 2.4–3.0 | 2.7 | YES |
+| Shift (LSL/LSR/ASR) | 2.3–2.8 | 2.5 | YES |
+| MOV (register) | 1.2–1.8 | 1.5 | YES |
+| CMP / TST | 2.4–2.9 | 2.6 | YES |
 
-**Analysis:** Integer ALU operations are the cheapest instruction class, reflecting their simple hardware implementation (single-cycle, minimal switching activity). Our values fall within the center of published ranges.
+**Note:** Integer ALU operations are the cheapest instruction class. Our values fall within published ranges from different process nodes (45 nm–28 nm), scaled down via Dennard-like scaling factors to approximate 7 nm.
 
 ### 2.2 Integer Multiply and Divide
 
-| Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| MUL (32-bit) | 5.8–7.2 | 6.5 | < 6% | [PASS] |
-| MUL (64-bit) | 6.2–7.5 | 6.8 | < 6% | [PASS] |
-| MADD (multiply-add) | 7.0–8.2 | 7.5 | < 5% | [PASS] |
-| SMULL (signed multiply long) | 6.8–7.8 | 7.2 | < 5% | [PASS] |
-| SDIV (32-bit) | 15–22 | 18.0 | < 12% | [PASS] |
-| UDIV (32-bit) | 14–20 | 16.5 | < 11% | [PASS] |
-| SDIV (64-bit) | 18–28 | 22.0 | < 12% | [PASS] |
+| Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| MUL (32-bit) | 5.8–7.2 | 6.5 | YES |
+| MUL (64-bit) | 6.2–7.5 | 6.8 | YES |
+| MADD (multiply-add) | 7.0–8.2 | 7.5 | YES |
+| SMULL (signed multiply long) | 6.8–7.8 | 7.2 | YES |
+| SDIV (32-bit) | 15–22 | 18.0 | YES |
+| UDIV (32-bit) | 14–20 | 16.5 | YES |
+| SDIV (64-bit) | 18–28 | 22.0 | YES |
 
-**Analysis:** Multiply operations cost 2–3× more than ALU due to complex multiplier hardware. Divide operations cost 6–8× more than ALU due to iterative SRT division algorithm requiring multiple cycles. Our model's 64-bit variants are proportionally higher than 32-bit.
+**Note:** Multiply costs 2–3× more than ALU; divide costs 6–8× more. The wide ranges reflect variability across different published sources. Our model picks midpoint values.
 
 ### 2.3 Load/Store Operations
 
-| Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| LDR (scalar, L1 hit) | 8.5–10.5 | 9.5 | < 5% | [PASS] |
-| LDR (scalar, base+offset) | 9.5–11.5 | 10.5 | < 8% | [PASS] |
-| LDP (load pair) | 13.0–15.5 | 14.0 | < 6% | [PASS] |
-| STR (scalar, L1 hit) | 6.5–8.0 | 7.2 | < 5% | [PASS] |
-| STP (store pair) | 10.5–13.0 | 11.5 | < 6% | [PASS] |
-| LDXR (load exclusive) | 10.5–13.0 | 11.5 | < 6% | [PASS] |
-| STXR (store exclusive) | 8.0–10.5 | 9.0 | < 8% | [PASS] |
+| Operation | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| LDR (scalar, L1 hit) | 8.5–10.5 | 9.5 | YES |
+| LDR (scalar, base+offset) | 9.5–11.5 | 10.5 | YES |
+| LDP (load pair) | 13.0–15.5 | 14.0 | YES |
+| STR (scalar, L1 hit) | 6.5–8.0 | 7.2 | YES |
+| STP (store pair) | 10.5–13.0 | 11.5 | YES |
 
-**Cache Hierarchy Energy Costs (for reference):**
+**Cache Hierarchy Energy Costs (for reference — not modelled):**
 
 | Level | Load Energy | Store Energy | Relative Cost |
 |-------|-------------|--------------|---------------|
 | L1 hit (our assumption) | 9.5 pJ | 7.2 pJ | 1.0× |
 | L2 hit | ~35 pJ | ~28 pJ | ~3.5× |
 | DRAM access | ~250 pJ | ~200 pJ | ~25× |
-| TLB miss | ~50 pJ | ~45 pJ | ~5× |
 
-**Important:** Our model assumes L1 cache hits for all loads/stores. Real applications with cache misses will exhibit significantly higher energy costs (3–25×).
+> **⚠️ IMPORTANT:** Our model assumes L1 cache hits for all loads/stores. Real applications with cache misses can exhibit 3–25× higher energy costs. This is the **single largest source of underestimation** in our model.
 
 ### 2.4 Branch Operations
 
-| Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| B (unconditional branch) | 2.2–3.0 | 2.5 | < 10% | [PASS] |
-| Bcc (conditional branch) | 3.0–4.0 | 3.5 | < 8% | [PASS] |
-| BL / BLR (branch with link) | 3.5–4.5 | 3.8–4.0 | < 8% | [PASS] |
-| RET (return) | 2.5–3.5 | 3.0 | < 10% | [PASS] |
-| CBZ / CBNZ (compare & branch) | 3.0–4.0 | 3.5 | < 8% | [PASS] |
+| Operation | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| B (unconditional branch) | 2.2–3.0 | 2.5 | YES |
+| Bcc (conditional branch) | 3.0–4.0 | 3.5 | YES |
+| BL / BLR (branch with link) | 3.5–4.5 | 3.8–4.0 | YES |
+| RET (return) | 2.5–3.5 | 3.0 | YES |
+| CBZ / CBNZ (compare & branch) | 3.0–4.0 | 3.5 | YES |
 
-**Branch Prediction Impact:**
-
-| Scenario | Predicted Cost | Branch Prediction Accuracy |
-|----------|---------------|---------------------------|
-| Correctly predicted | 3.5 pJ (standard) | ~95% (typical) |
-| Mispredicted | ~30–50 pJ | ~5% (flush + redirect) |
-
-Branches themselves are low-energy, but branch mispredictions incur a pipeline flush penalty that costs 10–15× more energy than a correctly predicted branch. Our model charges only the base cost — the misprediction penalty is architecture-specific and depends on pipeline depth.
+> **Note:** Our model charges only the base branch cost. Mispredicted branches (pipeline flush + redirect) cost ~10–15× more but are not modelled.
 
 ### 2.5 Floating-Point Operations
 
-| Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| FADD / FSUB (single) | 4.2–5.5 | 4.8 | < 8% | [PASS] |
-| FADD / FSUB (double) | 4.5–6.0 | 5.2 | < 9% | [PASS] |
-| FMUL (single) | 8.5–10.5 | 9.5 | < 7% | [PASS] |
-| FMUL (double) | 9.0–11.5 | 10.2 | < 8% | [PASS] |
-| FDIV (single) | 24–34 | 28.0 | < 11% | [PASS] |
-| FDIV (double) | 30–40 | 34.0 | < 10% | [PASS] |
-| FSQRT (single) | 18–26 | 22.0 | < 10% | [PASS] |
-| FSQRT (double) | 26–36 | 30.0 | < 11% | [PASS] |
-| FMADD (fused multiply-add) | 9.5–12.0 | 10.5 | < 8% | [PASS] |
+| Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| FADD / FSUB (single) | 4.2–5.5 | 4.8 | YES |
+| FADD / FSUB (double) | 4.5–6.0 | 5.2 | YES |
+| FMUL (single) | 8.5–10.5 | 9.5 | YES |
+| FMUL (double) | 9.0–11.5 | 10.2 | YES |
+| FDIV (single) | 24–34 | 28.0 | YES |
+| FDIV (double) | 30–40 | 34.0 | YES |
+| FSQRT (single) | 18–26 | 22.0 | YES |
+| FSQRT (double) | 26–36 | 30.0 | YES |
+| FMADD (fused multiply-add) | 9.5–12.0 | 10.5 | YES |
 
-**Analysis:** Floating-point operations are 2–10× more energy-intensive than their integer counterparts due to wider datapaths and more complex control logic. FDIV is the most expensive standard FP operation at 28–34 pJ (10× an integer ADD).
+**Note:** FP operations are 2–10× more energy-intensive than integer counterparts.
 
 ### 2.6 NEON / SIMD Operations
 
-| Instruction Type | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| ADD (v4i32) | 7.0–8.5 | 7.5 | < 7% | [PASS] |
-| ADD (v2i64) | 7.5–9.0 | 8.0 | < 8% | [PASS] |
-| MUL (v4i32) | 14–18 | 16.0 | < 8% | [PASS] |
-| MLA (v4i32) | 15–19 | 17.0 | < 8% | [PASS] |
-| FADD (v4f32) | 12–15 | 13.0 | < 8% | [PASS] |
-| FMUL (v4f32) | 20–25 | 22.0 | < 8% | [PASS] |
-| FDIV (v4f32) | 80–110 | 90.0 | < 12% | [PASS] |
-| FMLA (v4f32) | 23–28 | 25.0 | < 8% | [PASS] |
-
-**SIMD Energy Scaling:**
-
-| Vector Width | Integer ADD | FP MUL | Relative to Scalar |
-|--------------|-------------|--------|-------------------|
-| Scalar | 2.8 pJ | 9.5 pJ | 1.0× |
-| 64-bit (2×32) | 6.0 pJ | 16.0 pJ | ~2× |
-| 128-bit (4×32) | 7.5 pJ | 22.0 pJ | ~2.5× |
-
-SIMD operations benefit from energy proportionality: doubling vector width typically increases energy by 1.3–1.8× (not 2×), due to shared control logic and amortized datapath overhead.
+| Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| ADD (v4i32) | 7.0–8.5 | 7.5 | YES |
+| ADD (v2i64) | 7.5–9.0 | 8.0 | YES |
+| MUL (v4i32) | 14–18 | 16.0 | YES |
+| MLA (v4i32) | 15–19 | 17.0 | YES |
+| FADD (v4f32) | 12–15 | 13.0 | YES |
+| FMUL (v4f32) | 20–25 | 22.0 | YES |
+| FDIV (v4f32) | 80–110 | 90.0 | YES |
+| FMLA (v4f32) | 23–28 | 25.0 | YES |
 
 ### 2.7 Memory Barrier and Atomic Operations
 
-| Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| DMB (data memory barrier) | 8–12 | 10.0 | < 10% | [PASS] |
-| DSB (data synchronization barrier) | 8–12 | 10.0 | < 10% | [PASS] |
-| ISB (instruction synchronization barrier) | 12–18 | 15.0 | < 10% | [PASS] |
-| WFI (wait for interrupt) | 0.1–0.3 | 0.2 | < 20% | [WARN] Approximate |
+| Operation | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| DMB (data memory barrier) | 8–12 | 10.0 | YES |
+| DSB (data synchronization barrier) | 8–12 | 10.0 | YES |
+| ISB (instruction synchronization barrier) | 12–18 | 15.0 | YES |
+| WFI (wait for interrupt) | 0.1–0.3 | 0.2 | YES (approximate) |
 
 ### 2.8 Cryptographic Operations
 
-| Operation | Published Range (pJ) | Our Model (pJ) | Difference | Status |
-|---|---|---|---|---|
-| AES single round (AESE) | 10–14 | 12.0 | < 10% | [PASS] |
-| SHA256 hash round | 12–18 | 15.0 | < 12% | [PASS] |
-| CRC32 (per byte) | 7–10 | 8.0 | < 10% | [PASS] |
+| Operation | Reference Range (pJ) | Our Model (pJ) | Within Range? |
+|---|---|---|---|
+| AES single round (AESE) | 10–14 | 12.0 | YES |
+| SHA256 hash round | 12–18 | 15.0 | YES |
+| CRC32 (per byte) | 7–10 | 8.0 | YES |
 
 ---
 
@@ -339,41 +323,43 @@ E_function = Σ(E_block) across all blocks in the function
 
 ## 6. Accuracy Assessment
 
-### 6.1 Expected Accuracy by Scenario
+### 6.1 Estimated Confidence by Scenario
 
-| Scenario | Expected Error | Confidence | Rationale |
-|----------|---------------|------------|-----------|
-| Compute-bound (no memory) | ±10% | [HIGH] | Core ALU/FP activity well-predicted |
-| L1-cache-friendly code | ±20% | [HIGH] Medium-High | Memory hierarchy simplified |
-| Memory-intensive code | ±50% | [MEDIUM] | Cache miss behavior unpredictable |
-| Cache-thrashing code | ±100%+ | [LOW] | Memory wall dominates |
-| SIMD-heavy code | ±15% | [HIGH] Medium-High | Vector energy scales predictably |
-| Recursive functions | ±25% | [MEDIUM] | Call/return overhead variable |
-| Branch-heavy code | ±30% | [MEDIUM] | Prediction accuracy varies |
+> **Note:** These are *educated guesses* about model reliability, not validated accuracy measurements. No hardware measurements have been performed to confirm these ranges.
 
-### 6.2 Model Fit by Use Case
+| Scenario | Estimated Confidence | Rationale |
+|----------|---------------------|-----------|
+| Compute-bound (no memory) | MODERATE–HIGH | Core ALU/FP activity is reasonably well-predicted by instruction count and type |
+| L1-cache-friendly code | MODERATE | Memory hierarchy is simplified to a single L1-hit assumption |
+| Memory-intensive code | LOW | Cache miss behavior is completely unmodelled — can be 3–25× off |
+| Cache-thrashing code | VERY LOW | Memory wall dominates, and we have no memory model |
+| SIMD-heavy code | MODERATE | Vector energy scales predictably but exact costs depend on vector width |
+| Recursive functions | MODERATE | Call/return overhead is captured, but stack effect is not |
+| Branch-heavy code | MODERATE | Prediction accuracy varies; mispredict penalties are unmodelled |
 
-**High Confidence (use for optimization guidance):**
-- [OK] Comparing algorithm implementations (e.g., quicksort vs. mergesort)
-- [OK] Identifying energy hotspots (which functions consume the most energy)
-- [OK] Compiler optimization tuning (e.g., `-O2` vs. `-Os`)
-- [OK] Compute-intensive kernels (matrix multiply, FFT, convolution)
-- [OK] Educational demonstrations (understanding where energy goes)
+### 6.2 Appropriate Use Cases
 
-**Medium Confidence (use with caution):**
-- [WARN] General application profiling
-- [WARN] Function-level energy budgeting
-- [WARN] Library vs. hand-tuned code comparison
+**Good for (relative comparisons):**
+- Comparing algorithm implementations (e.g., quicksort vs. mergesort)
+- Identifying energy hotspots (which functions consume the most energy)
+- Compiler optimization tuning (e.g., `-O2` vs. `-Os`)
+- Compute-intensive kernels (matrix multiply, FFT, convolution)
+- Educational demonstrations (understanding where energy goes)
 
-**Low Confidence (do not use for):**
-- [NO] Absolute energy predictions for battery life estimation
-- [NO] Real-time energy-constrained scheduling
-- [NO] Safety-critical energy budgeting
-- [NO] Thermal/power delivery design decisions
+**Use with caution:**
+- General application profiling — memory effects are dominant
+- Function-level energy budgeting — static frequencies are approximate
+- Library vs. hand-tuned code comparison — may miss microarchitectural effects
 
-### 6.3 Validation Test Results
+**Do NOT use for:**
+- Absolute energy predictions for battery life estimation
+- Real-time energy-constrained scheduling
+- Safety-critical energy budgeting
+- Thermal/power delivery design decisions
 
-When run against the `llvm/test/sample.c` test suite (13 functions, 644 instructions, covering integer, FP, SIMD, recursion, atomics, CRC, and sorting), the model produces:
+### 6.3 Sample Test Output
+
+When run against the `llvm/test/sample.c` test suite (13 functions, 644 instructions), the model produces:
 
 | Metric | Value |
 |--------|-------|
@@ -382,38 +368,39 @@ When run against the `llvm/test/sample.c` test suite (13 functions, 644 instruct
 | Total estimated energy | 4,819.20 pJ |
 | Hottest function | `matmul` at 1,919.50 pJ (39.8%) |
 | Dynamic range (max/min) | 109× (matmul vs. array_copy) |
-| Expected accuracy | ±10–20% for compute-bound code |
-| Worst-case confidence | ±50% for memory-intense code |
 
-The dynamic range demonstrates correct behavior: `matmul` (triple-nested loop with FMAs) is correctly identified as the most energy-intensive function, while trivial functions like `array_copy` are near-zero.
+This demonstrates *internal consistency* — `matmul` (triple-nested loop with FMAs) is correctly identified as the most energy-intensive function. It does **not** validate absolute accuracy against real hardware.
 
 ---
 
 ## 7. Known Limitations
 
-### 7.1 Static Analysis Limitations
+### 7.1 Fundamental Limitations
 
-| Limitation | Impact | Mitigation |
-|------------|--------|------------|
-| **Static frequency estimation** | ±30% error on branch-heavy code | Use PGO (profile-guided optimization) for dynamic frequencies |
-| **L1 cache hit assumed** | Cache misses 3–25× more expensive | Add cache miss rate estimation |
-| **No operand switching activity** | ~10% underestimate on ALU energy | Model input data dependencies |
-| **No pipeline / IPC modeling** | May overcount on superscalar paths | Add pipeline simulation |
-| **No DVFS modeling** | Cannot model power management | Not a static analysis concern |
-| **No thermal effects** | Cannot model throttling | Out of scope for instruction-level model |
+| Limitation | Impact |
+|------------|--------|
+| **Static frequency estimation (no profile data)** | Frequencies are compile-time heuristics — can be ±30% off vs. actual execution counts |
+| **L1 cache hit ALWAYS assumed** | Cache misses cost 3–25× more; this is the #1 source of underestimation |
+| **No operand switching activity modelled** | ~10% underestimate on data-dependent ALU energy |
+| **No pipeline / superscalar IPC modelling** | May overcount on wide-issue superscalar paths where multiple instructions execute in parallel |
+| **No DVFS or thermal modelling** | Cannot model frequency scaling or thermal throttling |
+| **No memory controller or DRAM energy** | Only core pipeline energy is modelled |
+| **Branch misprediction penalty not included** | Mispredicts cost 10–15× more energy than correct branches |
 
-### 7.2 Model Construction Limitations
+### 7.2 Model Construction Caveats
 
-| Limitation | Rationale |
-|------------|-----------|
-| Values are medians of published ranges | Individual measurements vary by workload |
-| Process scaling is approximate | Exact 7nm data is proprietary |
-| No circuit-level simulation | SPICE-level modeling is impractical for 400+ opcodes |
-| LLVM opcode names may change across versions | Model should be regenerated for new LLVM releases |
+| Limitation | Explanation |
+|------------|-------------|
+| Values are midpoints of published ranges | Real measurements vary by workload, temperature, and silicon lottery |
+| Process scaling is approximate | Exact 7 nm energy data is proprietary to TSMC; scaling factors are educated estimates |
+| No circuit-level simulation used | SPICE-level modelling is impractical at this scope |
+| LLVM opcode names may drift across versions | Model may need regeneration for future LLVM releases |
+| Published references are from older/different processors | Cortex-A53 (28 nm), Cortex-A8/A9 (45 nm) — scaled to 7 nm, not measured |
+| The reference ranges are aggregate hand-collected values | They are not automatically re-fetched or independently validated per commit |
 
-### 7.3 Comparison with Hardware Measurement
+### 7.3 Recommended Hardware Validation
 
-For critical applications, we recommend hardware validation:
+For any use beyond educational demonstration, we recommend physical measurement:
 
 ```bash
 # 1. Use perf counters (Linux)
@@ -422,24 +409,18 @@ perf stat -e power/energy-pkg/ ./your_program
 # 2. Use ARM Streamline (requires ARM DS)
 streamline -capture ./your_program -output energy_results
 
-# 3. Use external current sensor
-# Connect INA219/INA226 to power rail
-python -c "
-import ina219
-# Read voltage and current
-# Calculate power = V × I
-# Accumulate over execution time
-"
+# 3. Use external current sensor (INA219/INA226)
+# Connect to power rail and log over execution
 ```
 
-**Expected correlation with hardware measurements:**
+**Estimated correlation (not validated):**
 
-| Metric | Expected Value |
+| Metric | Expected Range |
 |--------|---------------|
-| Instruction mix correlation (r²) | > 0.85 |
-| Function ranking (Spearman ρ) | > 0.90 |
-| Absolute energy accuracy | ±30–50% |
-| Relative comparison accuracy | ±10–20% |
+| Instruction mix correlation (r²) | 0.6–0.85 (estimated) |
+| Function ranking (Spearman ρ) | 0.7–0.9 (estimated) |
+| Absolute energy accuracy | ±50–100% (estimated) |
+| Relative comparison accuracy (same platform) | ±20–40% (estimated) |
 
 ---
 

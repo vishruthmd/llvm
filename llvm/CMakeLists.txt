@@ -44,6 +44,6 @@ install(PROGRAMS ${CMAKE_SOURCE_DIR}/visualize_energy.py
   DESTINATION bin
   RENAME visualize-energy
 )
-install(FILES ${CMAKE_SOURCE_DIR}/README.md
+install(FILES ${CMAKE_SOURCE_DIR}/../README.md
   DESTINATION share/energy-estimation
 )
