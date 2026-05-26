@@ -264,55 +264,53 @@ The report includes:
 
 ```
 .
-├── README.md                       this file — project overview
-├── design.md                       architecture approach and alternatives
-├── implementation.md               LLVM pass internals and build details
-├── evaluation.md                   metrics, baseline comparison, test cases
-├── validation.md                   cross-check against published literature
+├── README.md                       project overview
+├── design.md                       architecture & design
+├── implementation.md               pass internals & build
+├── evaluation.md                   metrics & baseline
+├── validation.md                   literature cross-check
 ├── bin/
-│   ├── build.sh                    build the LLVM pass (Linux/WSL)
-│   ├── run.sh                      run the full LLVM pass pipeline (Linux/WSL)
-│   ├── run_simple.bat              Windows CMD quick-run script (no build)
-│   ├── run_simple.sh               Git Bash / Linux quick-run script (auto-detects gcc/clang)
-│   └── run_energy.bat              redirect to simple pipeline (Windows CMD)
+│   ├── build.sh                    build LLVM pass (Linux)
+│   ├── run.sh                      run LLVM pipeline (Linux)
+│   ├── run_simple.bat              quick-run script (CMD)
+│   ├── run_simple.sh               quick-run script (Bash)
+│   └── run_energy.bat              redirect to simple (CMD)
 │
-├── llvm/                           # main LLVM pass source
-│   ├── CMakeLists.txt              outer CMake — find_package(LLVM)
-│   ├── progress.md                 completion status and bug log
-│   ├── visualize_energy.py         HTML + ASCII report generator
+├── llvm/                           LLVM pass source code
+│   ├── CMakeLists.txt              outer CMake config
+│   ├── progress.md                 completion status
+│   ├── visualize_energy.py         HTML report generator
 │   ├── energy-models/
-│   │   ├── aarch64.json            ARM Cortex-A55 model — 624 opcodes
+│   │   ├── aarch64.json            ARM Cortex-A55 model
 │   │   └── x86_64.json            x86-64 model (experimental)
 │   ├── test/
-│   │   ├── sample.c                14-function comprehensive test
-│   │   └── run_test.sh             end-to-end Linux/WSL pipeline script
+│   │   ├── sample.c                14-function test suite
+│   │   └── run_test.sh             pipeline test script
 │   └── lib/
 │       ├── Analysis/
-│       │   ├── EnergyModel.h       JSON model loader header
-│       │   ├── EnergyModel.cpp     JSON loader implementation
+│       │   ├── EnergyModel.h       model loader header
+│       │   ├── EnergyModel.cpp     model loader impl
 │       │   └── CMakeLists.txt
 │       └── CodeGen/
-│           ├── EnergyEstimation.cpp  MachineFunctionPass (417 lines)
+│           ├── EnergyEstimation.cpp  MachineFunctionPass
 │           └── CMakeLists.txt
 │
-├── examples/                       # test case source files
-│   ├── simple_test.c               13-function comprehensive test
-│   ├── fp_compute.c                FP-heavy test (4 functions)
-│   ├── matrix_multiply.c           Matrix multiply (2 implementations)
+├── examples/                       test C source files
+│   ├── simple_test.c               15-function test
+│   ├── fp_compute.c                FP-heavy test
+│   ├── matrix_multiply.c           matrix multiply test
 │   └── test.c                      5-function basic test
 │
-├── scripts/                        # Python analysis and validation tools
-│   ├── simple_energy_analysis.py   assembly parser (simple pipeline)
+├── scripts/                        Python analysis tools
+│   ├── simple_energy_analysis.py   assembly parser
 │   ├── convert_results.py          format converter
-│   ├── validate_model.py           automated cross-check against literature
-│   └── visualize.py                legacy HTML report generator
+│   ├── validate_model.py           cross-check validator
+│   └── visualize.py                legacy HTML generator
 │
 ├── models/
-│   └── energy_model.json           legacy 28 nm model (~60 opcodes)
-└── output/                         generated reports (after running)
+│   └── energy_model.json           legacy 28nm model
+└── output/                         generated reports
 ```
-
-**Total: 36+ test functions across 5 test files · 624 opcodes in energy model · 3,100+ lines of C++/Python**
 
 ---
 
