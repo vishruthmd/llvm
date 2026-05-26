@@ -7,6 +7,8 @@ Reads the JSON output written by the LLVM EnergyEstimationPass
   - Per-function energy summary table with bar charts
   - SVG donut chart for energy distribution
   - Collapsible per-block breakdown tables
+  - Source-level annotation (when --source and --remarks are provided)
+  - Per-instruction opcode breakdown
   - Dark/light mode toggle
   - Sortable columns via pure JavaScript
   - A plain-text ASCII summary printed to stdout
@@ -17,22 +19,24 @@ Usage
 
 Options
 -------
-  --output FILENAME     Write HTML report to FILENAME (default: energy_report.html)
-  --top N               Show only the top N most expensive functions (default: all)
-  --min-energy FLOAT    Exclude functions below this energy threshold (pJ)
-  --title STRING        Report title shown in the HTML header
-  --no-html             Skip HTML generation; only print ASCII summary
+  --output FILENAME      Write HTML report to FILENAME (default: energy_report.html)
+  --top N                Show only the top N most expensive functions (default: all)
+  --min-energy FLOAT     Exclude functions below this energy threshold (pJ)
+  --title STRING         Report title shown in the HTML header
+  --no-html              Skip HTML generation; only print ASCII summary
+  --source FILE          Path to the original .c source file for line-level annotation
+  --remarks FILE         Path to the -Rpass-analysis=energy remarks text file
 
 Example
 -------
-  # Compile and run pass (see README.md for full pipeline)
+  # Generate report with source annotation
   clang -O2 -target aarch64-linux-gnu -emit-llvm -c sample.c -o sample.bc
-  llc -load ./EnergyEstimationPass.so -energy-estimation          \
-      -energy-model energy-models/aarch64.json                    \
-      -energy-output results.json                                  \
+  llc -load ./EnergyEstimationPass.so -energy-estimation      \\
+      -energy-model energy-models/aarch64.json                \\
+      -energy-output results.json                              \\
       -Rpass-analysis=energy sample.bc -o sample.s 2>remarks.txt
-  python visualize_energy.py results.json --output report.html
-
+  python visualize_energy.py results.json \\
+      --source sample.c --remarks remarks.txt --output report.html
 """
 
 from __future__ import annotations
@@ -41,9 +45,12 @@ import argparse
 import html
 import json
 import math
+import re
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -65,6 +72,231 @@ def load_results(path: str) -> dict:
         sys.exit('[visualize_energy] ERROR: JSON missing "functions" key')
 
     return data
+
+
+# ---------------------------------------------------------------------------
+# Source annotation support
+# ---------------------------------------------------------------------------
+
+
+def parse_remarks(remarks_path: str) -> dict[str, dict[str, Any]]:
+    """Parse LLVM -Rpass-analysis=energy remarks to extract block->source mappings.
+
+    Returns a dict: func_name -> {block_name -> {line, col, raw_energy, weighted_energy}}
+    """
+    p = Path(remarks_path)
+    if not p.exists():
+        print(f"[visualize_energy] WARNING: remarks file not found: {remarks_path}",
+              file=sys.stderr)
+        return {}
+
+    func_map: dict[str, dict[str, Any]] = defaultdict(dict)
+    block_pattern = re.compile(
+        r"remark:\s+(.+?):(\d+):(\d+):\s+\[energy\]\s+BlockEnergy:"
+        r"\s+Function=(\S+)\s+Block=(\S+)"
+        r"\s+RawEnergy=([\d.]+)"
+        r"\s+FreqScale=([\d.]+)"
+        r"\s+WeightedEnergy=([\d.]+)"
+        r"\s+Instructions=(\d+)"
+    )
+    func_pattern = re.compile(
+        r"remark:\s+(.+?):(\d+):(\d+):\s+\[energy\]\s+FunctionEnergy:"
+        r"\s+Function=(\S+)"
+        r"\s+TotalEnergy=([\d.]+)"
+    )
+
+    content = p.read_text(encoding="utf-8")
+    for match in block_pattern.finditer(content):
+        source_file = match.group(1)
+        line = int(match.group(2))
+        col = int(match.group(3))
+        func_name = match.group(4)
+        block_name = match.group(5)
+        raw_energy = float(match.group(6))
+        freq_scale = float(match.group(7))
+        weighted_energy = float(match.group(8))
+        instructions = int(match.group(9))
+
+        entry = func_map.setdefault(func_name, {})
+        entry[block_name] = {
+            "source_file": source_file,
+            "line": line,
+            "col": col,
+            "raw_energy": raw_energy,
+            "freq_scale": freq_scale,
+            "weighted_energy": weighted_energy,
+            "instructions": instructions,
+        }
+
+    # Parse function-level remarks too (capture for potential cross-checking)
+    for match in func_pattern.finditer(content):
+        _func_name = match.group(4)
+        _total_energy = float(match.group(5))
+
+    print(f"[visualize_energy] Parsed {len(func_map)} function(s) from remarks",
+          file=sys.stderr)
+    total_blocks = sum(len(blocks) for blocks in func_map.values())
+    print(f"[visualize_energy]   {total_blocks} block(s) with source locations",
+          file=sys.stderr)
+    return dict(func_map)
+
+
+def build_source_annotation(
+    source_path: str,
+    functions: list[dict],
+    remark_map: dict[str, dict[str, Any]],
+) -> str:
+    """Generate HTML for source-level energy annotation.
+
+    Maps block-level energy data back to source lines using the parsed
+    LLVM remark information, and produces a gcov-style annotated source view.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">source file not found: '
+            f'{html.escape(source_path)}</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'Could not find source file: {html.escape(str(p))}</div></section>'
+        )
+
+    if not remark_map:
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">no remarks data</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'No remark data available. Pass --remarks FILE with the '
+            f'-Rpass-analysis=energy output to enable source annotation.</div></section>'
+        )
+
+    lines = p.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation</h2>'
+            f'<div style="padding:20px;color:var(--muted);">Empty source file.</div></section>'
+        )
+
+    # Build line -> energy mapping from remark data
+    # We track: total weighted energy per source line
+    line_energy: dict[int, float] = defaultdict(float)
+    line_raw_energy: dict[int, float] = defaultdict(float)
+    line_blocks: dict[int, list[str]] = defaultdict(list)
+
+    all_energies: list[float] = []
+    for func in functions:
+        func_name = func.get("name", "")
+        blocks = func.get("blocks", [])
+        func_remarks = remark_map.get(func_name, {})
+
+        for block in blocks:
+            block_name = block.get("name", "")
+            weighted = block.get("weighted_energy_pJ", 0.0)
+            raw = block.get("raw_energy_pJ", 0.0)
+
+            # Try to find this block in remarks
+            rem = func_remarks.get(block_name)
+            if rem:
+                line_num = rem["line"]
+                line_energy[line_num] += weighted
+                line_raw_energy[line_num] += raw
+                line_blocks[line_num].append(block_name)
+                all_energies.append(weighted)
+
+    if not all_energies:
+        # Fallback: No line-level data, show a note
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">'
+            f'no line-level mapping available</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'No block-to-source-line mappings found in the remarks file. '
+            f'Make sure the source was compiled with -g and the correct '
+            f'-Rpass-analysis=energy flag.</div></section>'
+        )
+
+    max_energy = max(all_energies) if all_energies else 1.0
+    if max_energy <= 0:
+        max_energy = 1.0
+
+    # Generate HTML rows
+    source_rows: list[str] = []
+    for i, line_text in enumerate(lines):
+        line_num = i + 1
+        energy = line_energy.get(line_num, 0.0)
+        raw_energy = line_raw_energy.get(line_num, 0.0)
+        blocks_on_line = line_blocks.get(line_num, [])
+
+        if energy > 0:
+            ratio = energy / max_energy
+            color = energy_color(energy, max_energy)
+            bar_w = max(round(ratio * 100), 2)
+            # Build a tooltip with block info
+            tooltip_parts = [f"Energy: {energy:.2f} pJ (raw: {raw_energy:.2f} pJ)"]
+            for bname in blocks_on_line[:5]:
+                tooltip_parts.append(f"Block: {bname}")
+            tooltip = " | ".join(tooltip_parts)
+            bar_html = (
+                f'<div class="src-bar" style="width:{bar_w}%;'
+                f'background:{color};" title="{html.escape(tooltip)}"></div>'
+            )
+            line_class = "src-line src-line-hot"
+        else:
+            bar_html = ""
+            line_class = "src-line"
+
+        # Escape the line text, preserve leading whitespace visually
+        escaped_line = html.escape(line_text)
+        if not escaped_line:
+            escaped_line = " "
+
+        source_rows.append(
+            f'<tr class="{line_class}">'
+            f'<td class="src-lineno">{line_num}</td>'
+            f'<td class="src-bar-cell">{bar_html}</td>'
+            f'<td class="src-energy-num">{energy:,.2f}</td>'
+            f'<td class="src-code"><pre>{escaped_line}</pre></td>'
+            f'</tr>'
+        )
+
+    # Summary stats for the source annotation
+    total_source_energy = sum(line_energy.values())
+
+    return f"""
+    <section class="panel" id="sec-source">
+      <h2>[D] Source-Level Energy Annotation
+        <span class="hint">
+          {len(source_rows)} lines &middot;
+          {len([l for l in line_energy.values() if l > 0])} hot lines &middot;
+          {total_source_energy:,.2f} pJ mapped
+          &mdash; overview in <a href="#sec-summary"
+          style="color:var(--accent);text-decoration:none;">[A]</a>
+        </span>
+      </h2>
+      <div class="src-container">
+        <table class="src-table">
+          <thead>
+            <tr>
+              <th class="src-lineno-th">Line</th>
+              <th class="src-bar-th">Energy</th>
+              <th class="src-energy-th">pJ</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {"".join(source_rows)}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:8px 20px 12px;font-size:0.72rem;color:var(--muted);">
+        <strong>Tip:</strong> Hover over the energy bars to see block details.
+        Hotter bars (red) = higher energy cost. Only lines with debug info
+        are annotated — compiler-generated code (loop preheaders, exit blocks)
+        may not map to visible source lines.
+      </div>
+    </section>
+    """
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +444,6 @@ def print_ascii_summary(data: dict, top_n: int | None, min_energy: float) -> Non
             freq = blk.get("freq_scale", 0.0)
             wt = blk.get("weighted_energy_pJ", 0.0)
             ic = blk.get("instructions", 0)
-            pct_b = wt / fn_energy * 100 if fn_energy > 0 else 0.0
             bname_str = bname if len(bname) <= 30 else bname[:27] + "..."
             print(f"    {bname_str:<30} {raw:>10.2f} {freq:>10.4f} {wt:>13.2f} {ic:>7}")
         print()
@@ -558,6 +789,88 @@ details > .block-table { padding: 0; }
   font-variant-numeric: tabular-nums;
 }
 
+/* ===== Source Annotation Styles ===== */
+.src-container {
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+}
+.src-table {
+  font-size: 0.78rem;
+  border-collapse: collapse;
+  width: 100%;
+}
+.src-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card2);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 0.65rem;
+}
+.src-lineno-th { width: 50px; text-align: right; }
+.src-bar-th { width: 100px; text-align: center; }
+.src-energy-th { width: 80px; text-align: right; }
+
+.src-line td {
+  padding: 0;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(128,128,128,0.05);
+}
+.src-line:hover td {
+  background: rgba(108,143,247,0.05);
+}
+.src-lineno {
+  width: 50px;
+  text-align: right;
+  padding: 1px 8px !important;
+  color: var(--muted);
+  font-size: 0.7rem;
+  user-select: none;
+  background: var(--card2);
+  border-right: 1px solid var(--border);
+}
+.src-bar-cell {
+  width: 100px;
+  padding: 1px 4px !important;
+}
+.src-bar {
+  height: 14px;
+  min-width: 2px;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+  cursor: help;
+}
+.src-energy-num {
+  width: 80px;
+  text-align: right;
+  padding: 1px 8px !important;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.src-code {
+  padding: 1px 12px !important;
+}
+.src-code pre {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 0.76rem;
+  margin: 0;
+  white-space: pre;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  color: var(--text);
+}
+
+/* Hot line highlighting */
+.src-line-hot td {
+  background: rgba(248,113,113,0.04);
+}
+.src-line-hot:hover td {
+  background: rgba(248,113,113,0.08);
+}
+
 /* Footnote */
 .footnote {
   font-size: 0.74rem;
@@ -772,7 +1085,20 @@ def _build_footnote(arch: str) -> str:
     )
 
 
-def build_html(data: dict, title: str, functions: list[dict], total_all: float) -> str:
+def _has_source_annotation(source_path: str | None, remarks_path: str | None) -> bool:
+    """Check if both source and remarks files are available."""
+    if not source_path or not remarks_path:
+        return False
+    return Path(source_path).exists() and Path(remarks_path).exists()
+
+
+def build_html(
+    data: dict,
+    title: str,
+    functions: list[dict],
+    total_all: float,
+    source_annotation_html: str = "",
+) -> str:
     arch = data.get("arch", "unknown")
     unit = data.get("unit", "pJ")
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -985,13 +1311,25 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
     details_section = f"""
     <section class="panel" id="sec-blocks">
       <h2>[B] Per-Function Block Breakdown
-        <span class="hint">(click a row to expand &mdash; overview in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; distribution in <a href="#sec-donut" style="color:var(--accent);text-decoration:none;">[C]</a>)</span>
+        <span class="hint">(click a row to expand &mdash; overview in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; distribution in <a href="#sec-donut" style="color:var(--accent);text-decoration:none;">[C]</a> &mdash; source in <a href="#sec-source" style="color:var(--accent);text-decoration:none;">[D]</a>)</span>
       </h2>
       {"".join(details_html_parts)}
     </section>
     """
 
     footnote = _build_footnote(arch)
+
+    # Build nav links based on whether source annotation is available
+    has_source = bool(source_annotation_html)
+    nav_links = """
+        Sections: <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
+        &middot; <a href="#sec-blocks" style="color:#6c8ff7;text-decoration:none;">[B] Blocks</a>
+        &middot; <a href="#sec-donut" style="color:#6c8ff7;text-decoration:none;">[C] Distribution</a>
+    """
+    if has_source:
+        nav_links += """
+        &middot; <a href="#sec-source" style="color:#6c8ff7;text-decoration:none;">[D] Source</a>
+        """
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -1009,9 +1347,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
       Static energy estimation via LLVM EnergyEstimationPass (MachineFunctionPass)
     </div>      <div style="margin-top:10px">{badges_html}</div>
       <div style="margin-top:6px;color:#8892a4;font-size:0.72rem;">
-        Sections: <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
-        &middot; <a href="#sec-blocks" style="color:#6c8ff7;text-decoration:none;">[B] Blocks</a>
-        &middot; <a href="#sec-donut" style="color:#6c8ff7;text-decoration:none;">[C] Distribution</a>
+        {nav_links}
       </div>
   </div>
   <button id="themeBtn" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
@@ -1027,6 +1363,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
 
   {summary_table}
   {details_section}
+  {source_annotation_html}
   {footnote}
 </div>
 
@@ -1079,6 +1416,18 @@ def main() -> None:
         action="store_true",
         help="Skip HTML generation; only print ASCII summary to stdout",
     )
+    parser.add_argument(
+        "--source",
+        default=None,
+        metavar="FILE",
+        help="Path to the original .c source file for line-level annotation",
+    )
+    parser.add_argument(
+        "--remarks",
+        default=None,
+        metavar="FILE",
+        help="Path to the -Rpass-analysis=energy remarks file for source mapping",
+    )
     args = parser.parse_args()
 
     data = load_results(args.results_json)
@@ -1100,7 +1449,24 @@ def main() -> None:
     if args.no_html:
         return
 
-    html_content = build_html(data, args.title, functions, total_all)
+    # Build source annotation if requested
+    source_annotation_html = ""
+    if args.source and args.remarks:
+        remark_map = parse_remarks(args.remarks)
+        if remark_map:
+            source_annotation_html = build_source_annotation(
+                args.source, functions, remark_map
+            )
+            print(f"[visualize_energy] Source annotation: {args.source}",
+                  file=sys.stderr)
+        else:
+            print("[visualize_energy] WARNING: No remarks data parsed — "
+                  "source annotation will be empty.", file=sys.stderr)
+
+    html_content = build_html(
+        data, args.title, functions, total_all,
+        source_annotation_html=source_annotation_html,
+    )
     out_path = Path(args.output)
     out_path.write_text(html_content, encoding="utf-8")
 

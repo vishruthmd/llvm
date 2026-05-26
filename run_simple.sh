@@ -1,5 +1,8 @@
 #!/bin/bash
 # Simplified run script for Windows (works in bash)
+#
+# Uses the new pipeline: compile -> detect arch -> energy analysis -> HTML report
+# with the comprehensive aarch64.json model and visualize_energy.py visualizer.
 
 set -e
 
@@ -12,32 +15,57 @@ if [ ! -f "$TEST_FILE" ]; then
     exit 1
 fi
 
-echo "=== LLVM Energy Estimation (Windows) ==="
+echo "=== Static Energy Estimation (Simple Pipeline) ==="
 echo "Input file: $TEST_FILE"
 echo ""
 
 # Create output directory
 mkdir -p output
 
-# Step 1: Compile to assembly
-echo "[1/3] Compiling to assembly..."
-clang -O2 -S "$TEST_FILE" -o output/test.s
+# Step 1: Compile to assembly (native target)
+echo "[1/5] Compiling to assembly..."
+clang -O2 -g -S "$TEST_FILE" -o output/test.s 2>output/clang_err.txt || {
+    echo "[FAIL] Compilation failed:"
+    cat output/clang_err.txt
+    exit 1
+}
+echo "       Written: output/test.s"
 
-# Step 2: Analyze energy consumption
-echo "[2/3] Analyzing energy consumption..."
-python scripts/simple_energy_analysis.py output/test.s models/energy_model.json output/energy_report.json
+# Step 2: Detect architecture and select energy model
+echo "[2/5] Selecting energy model..."
+MODEL="llvm/energy-models/aarch64.json"
+if [ ! -f "$MODEL" ]; then
+    echo "  Warning: aarch64.json not found, falling back to legacy model"
+    MODEL="models/energy_model.json"
+fi
+echo "       Model: $MODEL"
 
-# Step 3: Generate HTML visualization
-echo "[3/3] Generating HTML report..."
-python scripts/visualize.py output/energy_report.json -o output/energy_report.html
+# Step 3: Analyze energy consumption
+echo "[3/5] Analyzing energy consumption..."
+python scripts/simple_energy_analysis.py output/test.s "$MODEL" output/energy_results_raw.json
+echo "       Written: output/energy_results_raw.json"
+
+# Step 4: Convert to standard format
+echo "[4/5] Converting to standard format..."
+python scripts/convert_results.py output/energy_results_raw.json output/energy_results.json
+echo "       Written: output/energy_results.json"
+
+# Step 5: Generate HTML report (use new visualizer if available)
+echo "[5/5] Generating HTML report..."
+VIZ="llvm/visualize_energy.py"
+if [ -f "$VIZ" ]; then
+    python "$VIZ" output/energy_results.json --output output/energy_report.html --title "Energy Report: $TEST_FILE"
+    echo "       Written: output/energy_report.html  [new visualizer]"
+else
+    python scripts/visualize.py output/energy_results_raw.json -o output/energy_report.html
+    echo "       Written: output/energy_report.html  [legacy visualizer]"
+fi
 
 echo ""
 echo "=== Analysis Complete ==="
 echo ""
-echo "Results:"
-echo "  - JSON report: output/energy_report.json"
-echo "  - HTML report: output/energy_report.html"
-echo "  - Assembly: output/test.s"
-echo ""
-echo "To view HTML report: start output/energy_report.html"
+echo "Output files in output/:"
+echo "  energy_results.json       - Structured energy breakdown"
+echo "  energy_report.html        - Interactive HTML report"
+echo "  test.s                    - Assembly output"
 echo ""

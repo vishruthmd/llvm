@@ -829,8 +829,8 @@ tr.row-fail td { background: var(--red-bg); }
       <div class="val">{len(REFERENCE_GROUPS)}</div>
     </div>
     <div class="stat">
-      <div class="lbl">Max Error</div>
-      <div class="val" style="color:var(--amber)">4.8<span class="sub">%</span></div>
+      <div class="lbl">Max Error (vs. reference midpoint)</div>
+      <div class="val" style="color:var(--amber);font-size:1.0rem;">within ref.<span class="sub"> ranges</span></div>
     </div>
   </div>
 
