@@ -4,10 +4,10 @@
 # =============================================================================
 #
 # Usage:
-#   ./run.sh                              # run default test (llvm/test/sample.c)
-#   ./run.sh examples/simple_test.c       # run a specific test file
-#   ./run.sh --help                       # show this message
-#   ./run.sh --simple                     # use Python simple pipeline (no LLVM build)
+#   bin/run.sh                            # run default test (llvm/test/sample.c)
+#   bin/run.sh examples/simple_test.c     # run a specific test file
+#   bin/run.sh --help                     # show this message
+#   bin/run.sh --simple                   # use Python simple pipeline (no LLVM build)
 #
 # What this script does:
 #   1. Compiles the C source to LLVM bitcode (AArch64 target)
@@ -37,7 +37,7 @@ fi
 
 # ── Configuration ───────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${PROJECT_ROOT}/build"
 OUTPUT_DIR="${PROJECT_ROOT}/output"
 
@@ -70,7 +70,7 @@ TEST_NAME="$(basename "$TEST_FILE" .c)"
 # ── Mode Detection ──────────────────────────────────────────────────────────
 if [[ "$SIMPLE_MODE" == true ]]; then
     echo -e "${BOLD}${YELLOW}=== Simple Python Pipeline ===${RESET}"
-    bash "${PROJECT_ROOT}/run_simple.sh" "$TEST_FILE"
+    bash "${PROJECT_ROOT}/bin/run_simple.sh" "$TEST_FILE"
     exit $?
 fi
 
@@ -89,11 +89,11 @@ if [[ -z "$PLUGIN" ]]; then
     echo -e "${YELLOW}============================================================${RESET}"
     echo -e "${YELLOW}  LLVM pass plugin not found.${RESET}"
     echo -e "${YELLOW}  Falling back to Python simple pipeline...${RESET}"
-    echo -e "${YELLOW}  To build the full pass, run: ./build.sh${RESET}"
+    echo -e "${YELLOW}  To build the full pass, run: bin/build.sh${RESET}"
     echo -e "${YELLOW}============================================================${RESET}"
     echo ""
-    bash "${PROJECT_ROOT}/run_simple.sh" "$TEST_FILE"
-    exit 0
+    bash "${PROJECT_ROOT}/bin/run_simple.sh" "$TEST_FILE"
+    exit $?
 fi
 
 # ── Full Pipeline ───────────────────────────────────────────────────────────

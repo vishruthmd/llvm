@@ -4,7 +4,7 @@
 
 This document describes how the AArch64 energy model (`llvm/energy-models/aarch64.json`) was constructed and cross-checked against published academic research, ARM technical documentation, and established energy modeling methodologies.
 
-> **⚠️ IMPORTANT DISCLAIMER:** This is a **static, heuristic energy model** — not a validated physical measurement. The values below are **informed by**, not verified against, published data. All percentages represent **consistency with published ranges**, not measured accuracy. See [Known Limitations](#7-known-limitations) for details.
+> ** IMPORTANT DISCLAIMER:** This is a **static, heuristic energy model** — not a validated physical measurement. The values below are **informed by**, not verified against, published data. All percentages represent **consistency with published ranges**, not measured accuracy. See [Known Limitations](#7-known-limitations) for details.
 
 ---
 

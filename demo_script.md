@@ -13,7 +13,7 @@ This script walks through recording a ~5 minute demo showing:
 - A terminal with dark background (green/cyan text for energy output)
 - Python 3, Clang, and the project cloned
 - `cd` into the project root directory
-- Run `chmod +x build.sh run.sh run_simple.sh` if on Linux/macOS
+- Run `chmod +x bin/build.sh bin/run.sh bin/run_simple.sh` if on Linux/macOS
 - Screen recording software (OBS, QuickTime, Xbox Game Bar, etc.)
 
 ---
@@ -35,7 +35,7 @@ This script walks through recording a ~5 minute demo showing:
 
 ```
  Show the command and output:
- > ./run_simple.sh examples/simple_test.c
+ > bin/run_simple.sh examples/simple_test.c
 ```
 
 **Narrator:**
@@ -125,7 +125,7 @@ Input file: examples/simple_test.c
 
 ```
  Run the pipeline on examples/test.c (simple 5-function test):
- > ./run_simple.sh examples/test.c
+ > bin/run_simple.sh examples/test.c
 ```
 
 **Narrator:**
@@ -163,7 +163,7 @@ Input file: examples/simple_test.c
 ### Scene 8: The Hardware Validation Gap (30s)
 
 ```
- Show the disclaimer from VALIDATION.md or README.md:
+ Show the disclaimer from validation.md or README.md:
 ```
 
 **Narrator:**
@@ -198,7 +198,7 @@ For a screenshot-based demo, capture:
 | 6 | Browser: Expanded block breakdown | Click a function row |
 | 7 | Browser: Opcode breakdown | Nested instruction table |
 | 8 | Terminal: Simple test output | examples/test.c results |
-| 9 | The disclaimer/limitation | From VALIDATION.md footer |
+| 9 | The disclaimer/limitation | From validation.md footer |
 
 ---
 

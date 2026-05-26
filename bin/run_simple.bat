@@ -6,12 +6,12 @@ REM Uses: clang (compile to assembly) + Python (parse + estimate energy)
 REM No LLVM development libraries required.
 REM
 REM Usage:
-REM   run_simple.bat [source_file.c]
+REM   bin\run_simple.bat [source_file.c]
 REM
 REM Examples:
-REM   run_simple.bat                            (uses examples\simple_test.c)
-REM   run_simple.bat llvm\test\sample.c         (uses the assignment test file)
-REM   run_simple.bat path\to\your_code.c
+REM   bin\run_simple.bat                            (uses examples\simple_test.c)
+REM   bin\run_simple.bat llvm\test\sample.c         (uses the assignment test file)
+REM   bin\run_simple.bat path\to\your_code.c
 REM =============================================================================
 
 setlocal enabledelayedexpansion
@@ -24,24 +24,25 @@ if not exist "%TEST_FILE%" (
     echo.
     echo [ERROR] Source file not found: %TEST_FILE%
     echo.
-    echo Usage: run_simple.bat [source_file.c]
-    echo Example: run_simple.bat examples\simple_test.c
+    echo Usage: bin\run_simple.bat [source_file.c]
+    echo Example: bin\run_simple.bat examples\simple_test.c
     exit /b 1
 )
 
 REM ── Paths ────────────────────────────────────────────────────────────────────
 set OUTPUT_DIR=output
-set DEFAULT_MODEL=llvm\energy-models\aarch64.json
-set MODEL_FILE=llvm\energy-models\aarch64.json
-set X86_MODEL=llvm\energy-models\x86_64.json
-set ANALYSIS_SCRIPT=scripts\simple_energy_analysis.py
-set VISUALIZE_SCRIPT=llvm\visualize_energy.py
-set LEGACY_VISUALIZE=scripts\visualize.py
+set PROJECT_ROOT=..\
+set DEFAULT_MODEL=%PROJECT_ROOT%llvm\energy-models\aarch64.json
+set MODEL_FILE=%PROJECT_ROOT%llvm\energy-models\aarch64.json
+set X86_MODEL=%PROJECT_ROOT%llvm\energy-models\x86_64.json
+set ANALYSIS_SCRIPT=%PROJECT_ROOT%scripts\simple_energy_analysis.py
+set VISUALIZE_SCRIPT=%PROJECT_ROOT%llvm\visualize_energy.py
+set LEGACY_VISUALIZE=%PROJECT_ROOT%scripts\visualize.py
 
 REM Fall back to old model if new one not found
 if not exist "%MODEL_FILE%" (
     echo [WARN] New model not found, falling back to models\energy_model.json
-    set MODEL_FILE=models\energy_model.json
+    set MODEL_FILE=%PROJECT_ROOT%models\energy_model.json
 )
 
 echo.

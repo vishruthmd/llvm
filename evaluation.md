@@ -211,13 +211,13 @@ To reproduce these results:
 
 ```bash
 # Simple pipeline (no LLVM dev libs needed, works on Windows)
-./run.sh examples/simple_test.c
+bin/run.sh examples/simple_test.c
 
 # Full LLVM pass pipeline (Linux/WSL with LLVM 14+)
-./build.sh
-./run.sh                   # runs llvm/test/sample.c
-./run.sh examples/simple_test.c
-./run.sh examples/fp_compute.c
+bin/build.sh
+bin/run.sh                   # runs llvm/test/sample.c
+bin/run.sh examples/simple_test.c
+bin/run.sh examples/fp_compute.c
 ```
 
 All output files go to `output/` directory:
