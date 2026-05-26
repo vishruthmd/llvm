@@ -40,11 +40,11 @@ def test_pass_builds():
     """Test that the pass builds successfully."""
     print(f"{Colors.BLUE}[TEST]{Colors.END} Building pass...")
 
-    if not os.path.exists("build.sh"):
-        print(f"{Colors.RED}[FAIL]{Colors.END} build.sh not found")
+    if not os.path.exists("bin/build.sh"):
+        print(f"{Colors.RED}[FAIL]{Colors.END} bin/build.sh not found")
         return False
 
-    returncode, stdout, stderr = run_command("bash build.sh")
+    returncode, stdout, stderr = run_command("bash bin/build.sh")
 
     # Check for pass library
     pass_lib = "build/lib/EnergyPass.so"
@@ -109,7 +109,7 @@ def test_example_compilation():
         return False
 
     # Run the pass
-    returncode, stdout, stderr = run_command(f"bash run.sh {example}")
+    returncode, stdout, stderr = run_command(f"bash bin/run.sh {example}")
 
     # Check for output files
     output_json = "output/energy_report.json"

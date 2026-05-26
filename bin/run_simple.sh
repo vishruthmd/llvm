@@ -1,19 +1,16 @@
-#!/bin/bash
-# Simplified run script for Windows (works in bash)
-#
-# Uses the new pipeline: compile -> detect arch -> energy analysis -> HTML report
-# with the comprehensive aarch64.json model and visualize_energy.py visualizer.
-
-set -e
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Default test file
-TEST_FILE="${1:-examples/simple_test.c}"
+TEST_FILE="${1:-${PROJECT_ROOT}/examples/simple_test.c}"
 
 if [ ! -f "$TEST_FILE" ]; then
     echo "Error: Test file not found: $TEST_FILE"
-    echo "Usage: ./run_simple.sh [source_file.c]"
+    echo "Usage: $0 [source_file.c]"
     exit 1
 fi
+
+cd "$PROJECT_ROOT"
 
 echo "=== Static Energy Estimation (Simple Pipeline) ==="
 echo "Input file: $TEST_FILE"
@@ -33,31 +30,31 @@ echo "       Written: output/test.s"
 
 # Step 2: Detect architecture and select energy model
 echo "[2/5] Selecting energy model..."
-MODEL="llvm/energy-models/aarch64.json"
+MODEL="${PROJECT_ROOT}/llvm/energy-models/aarch64.json"
 if [ ! -f "$MODEL" ]; then
     echo "  Warning: aarch64.json not found, falling back to legacy model"
-    MODEL="models/energy_model.json"
+    MODEL="${PROJECT_ROOT}/models/energy_model.json"
 fi
 echo "       Model: $MODEL"
 
 # Step 3: Analyze energy consumption
 echo "[3/5] Analyzing energy consumption..."
-python scripts/simple_energy_analysis.py output/test.s "$MODEL" output/energy_results_raw.json
+python "${PROJECT_ROOT}/scripts/simple_energy_analysis.py" output/test.s "$MODEL" output/energy_results_raw.json
 echo "       Written: output/energy_results_raw.json"
 
 # Step 4: Convert to standard format
 echo "[4/5] Converting to standard format..."
-python scripts/convert_results.py output/energy_results_raw.json output/energy_results.json
+python "${PROJECT_ROOT}/scripts/convert_results.py" output/energy_results_raw.json output/energy_results.json
 echo "       Written: output/energy_results.json"
 
 # Step 5: Generate HTML report (use new visualizer if available)
 echo "[5/5] Generating HTML report..."
-VIZ="llvm/visualize_energy.py"
+VIZ="${PROJECT_ROOT}/llvm/visualize_energy.py"
 if [ -f "$VIZ" ]; then
     python "$VIZ" output/energy_results.json --output output/energy_report.html --title "Energy Report: $TEST_FILE"
     echo "       Written: output/energy_report.html  [new visualizer]"
 else
-    python scripts/visualize.py output/energy_results_raw.json -o output/energy_report.html
+    python "${PROJECT_ROOT}/scripts/visualize.py" output/energy_results_raw.json -o output/energy_report.html
     echo "       Written: output/energy_report.html  [legacy visualizer]"
 fi
 

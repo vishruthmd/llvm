@@ -2,11 +2,10 @@
 # =============================================================================
 # build.sh — Build the LLVM Static Energy Estimation Pass
 # =============================================================================
-#
-# Usage:
-#   ./build.sh                    # auto-detect LLVM
-#   ./build.sh /usr/lib/llvm-14   # explicit LLVM directory
-#   ./build.sh --help             # show this message
+## Usage:
+#   bin/build.sh                    # auto-detect LLVM
+#   bin/build.sh /usr/lib/llvm-14   # explicit LLVM directory
+#   bin/build.sh --help             # show this message
 #
 # Prerequisites:
 #   sudo apt install llvm-14 llvm-14-dev clang-14 cmake ninja-build python3
@@ -36,7 +35,7 @@ fi
 
 # ── Locate LLVM ─────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$SCRIPT_DIR"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 BUILD_DIR="${PROJECT_ROOT}/build"
 LLVM_DIR="$1"
 
@@ -70,7 +69,7 @@ if [[ -z "$LLVM_DIR" || ! -d "$LLVM_DIR" ]]; then
     echo "    sudo apt install llvm-14 llvm-14-dev clang-14 cmake ninja-build"
     echo ""
     echo "  Then specify the LLVM directory:"
-    echo "    ./build.sh /usr/lib/llvm-14/lib/cmake/llvm"
+    echo "    bin/build.sh /usr/lib/llvm-14/lib/cmake/llvm"
     echo ""
     echo "  Or let the script auto-detect (tries common paths)."
     exit 1
@@ -152,6 +151,6 @@ echo "  Plugin : ${PLUGIN:-$BUILD_DIR/ (check for .so/.dylib)}"
 echo "  Model  : $PROJECT_ROOT/llvm/energy-models/aarch64.json"
 echo ""
 echo "  To run the full pipeline:"
-echo "    ./run.sh                          # runs default test (sample.c)"
-echo "    ./run.sh examples/simple_test.c   # runs specific test file"
+echo "    bin/run.sh                          # runs default test (sample.c)"
+echo "    bin/run.sh examples/simple_test.c   # runs specific test file"
 echo ""

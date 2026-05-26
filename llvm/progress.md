@@ -185,7 +185,7 @@ python scripts/validate_model.py --model llvm/energy-models/aarch64.json --outpu
 | Float add (FADD) | 4.8 | 4.2–5.5 | 2 cycles | YES |
 | Float div (FDIV) | 28.0 | 24–35 | 12–16 cycles | YES |
 
-**Known limitations (see VALIDATION.md for full details):**
+**Known limitations (see validation.md for full details):**
 - Values are **informed by**, not verified against, measured 7 nm data
 - Published references are from 28 nm / 45 nm processors, scaled downward
 - No hardware validation has been performed
@@ -199,7 +199,7 @@ python scripts/validate_model.py --model llvm/energy-models/aarch64.json --outpu
 # -- Inside llvm/ subdirectory --
 llvm/
 ├── CMakeLists.txt                  outer CMake — find_package(LLVM), add_subdirectory
-├── PROGRESS.md                     this file
+├── progress.md                     this file
 ├── visualize_energy.py             HTML + ASCII report generator (712 lines)
 ├── energy-models/
 │   └── aarch64.json                ARM Cortex-A55 model — 400+ opcodes (727 lines)
@@ -249,7 +249,7 @@ The C++ pass is **correctly written** but cannot be compiled on the current Wind
 | `LLVMConfig.cmake` (full install) | CMake `find_package(LLVM)` |
 | LLVM dev headers (`llvm/CodeGen/*.h`) | Compiling `EnergyEstimation.cpp` |
 
-**The Python simple-mode pipeline** (`run_simple.bat` → AArch64 cross-compile → assembly parse → energy model → HTML) **is fully working** and produced real results from all 14 functions in `sample.c`. This runs right now with zero extra setup.
+**The Python simple-mode pipeline** (`bin/run_simple.bat` → AArch64 cross-compile → assembly parse → energy model → HTML) **is fully working** and produced real results from all 14 functions in `sample.c`. This runs right now with zero extra setup.
 
 For the full compiled pass, install WSL and run:
 ```bash

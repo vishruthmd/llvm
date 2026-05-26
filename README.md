@@ -1,6 +1,6 @@
 # LLVM Static Energy Estimation Pass
 
-[DESIGN](DESIGN.md) · [IMPLEMENTATION](IMPLEMENTATION.md) · [EVALUATION](EVALUATION.md) · [VALIDATION](VALIDATION.md)
+[design](design.md) · [implementation](implementation.md) · [evaluation](evaluation.md) · [validation](validation.md)
 
 A compiler-integrated energy analysis tool built as an LLVM `MachineFunctionPass`. It estimates per-function and per-block energy consumption at compile time by combining per-instruction energy costs (sourced from published ARM microarchitecture data) with static block frequency analysis — no hardware profiler or physical measurement needed.
 
@@ -38,9 +38,9 @@ Every machine instruction is looked up in a JSON energy model mapping opcode nam
 ## Quick Start: Full LLVM Pass (Linux/WSL)
 
 ```bash
-./build.sh                          # build the compiled LLVM pass
-./run.sh                            # run on default test (llvm/test/sample.c)
-./run.sh examples/simple_test.c     # run on a specific test file
+bin/build.sh                        # build the compiled LLVM pass
+bin/run.sh                          # run on default test (llvm/test/sample.c)
+bin/run.sh examples/simple_test.c   # run on a specific test file
 ```
 
 ---
@@ -173,19 +173,20 @@ The report includes:
 ```
 .
 ├── README.md                       this file — project overview
-├── DESIGN.md                       architecture approach and alternatives
-├── IMPLEMENTATION.md               LLVM pass internals and build details
-├── EVALUATION.md                   metrics, baseline comparison, test cases
-├── VALIDATION.md                   cross-check against published literature
-├── build.sh                        build the LLVM pass (Linux/WSL)
-├── run.sh                          run the energy estimation pipeline
-├── run_simple.bat                  Windows quick-run script (no build)
-├── run_simple.sh                   Unix quick-run script (no build)
-├── run_energy.bat                  redirect to simple pipeline (Windows)
+├── design.md                       architecture approach and alternatives
+├── implementation.md               LLVM pass internals and build details
+├── evaluation.md                   metrics, baseline comparison, test cases
+├── validation.md                   cross-check against published literature
+├── bin/
+│   ├── build.sh                    build the LLVM pass (Linux/WSL)
+│   ├── run.sh                      run the energy estimation pipeline
+│   ├── run_simple.bat              Windows quick-run script (no build)
+│   ├── run_simple.sh               Unix quick-run script (no build)
+│   └── run_energy.bat              redirect to simple pipeline (Windows)
 │
 ├── llvm/                           # main LLVM pass source
 │   ├── CMakeLists.txt              outer CMake — find_package(LLVM)
-│   ├── PROGRESS.md                 completion status and bug log
+│   ├── progress.md                 completion status and bug log
 │   ├── visualize_energy.py         HTML + ASCII report generator
 │   ├── energy-models/
 │   │   ├── aarch64.json            ARM Cortex-A55 model — 624 opcodes
@@ -233,7 +234,7 @@ The report includes:
 | L1 cache hit ALWAYS assumed | Cache misses can cost 3–25× more — the #1 source of underestimation |
 | No operand switching activity | Likely underestimates data-dependent ALU energy by ~10% |
 | No pipeline / IPC modelling | May overcount on superscalar paths where instructions execute in parallel |
-| No hardware validation | All claims are heuristic — see VALIDATION.md for full caveats |
+| No hardware validation | All claims are heuristic — see validation.md for full caveats |
 
 ---
 
@@ -241,10 +242,10 @@ The report includes:
 
 | Document | Contents |
 |---|---|
-| [DESIGN.md](DESIGN.md) | Architecture approach, key design decisions, alternatives considered |
-| [IMPLEMENTATION.md](IMPLEMENTATION.md) | LLVM pass internals, file structure, build system, energy model schema |
-| [EVALUATION.md](EVALUATION.md) | Metrics, baseline comparison, test case results, validation |
-| [VALIDATION.md](VALIDATION.md) | Detailed cross-check against published literature |
+| [design.md](design.md) | Architecture approach, key design decisions, alternatives considered |
+| [implementation.md](implementation.md) | LLVM pass internals, file structure, build system, energy model schema |
+| [evaluation.md](evaluation.md) | Metrics, baseline comparison, test case results, validation |
+| [validation.md](validation.md) | Detailed cross-check against published literature |
 
 ---
 

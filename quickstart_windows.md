@@ -8,12 +8,12 @@ Your LLVM Energy Estimation tool is ready to use on Windows.
 
 ### Option 1: Use the batch script (easiest)
 ```bash
-bash run_simple.bat examples/simple_test.c
+bash bin/run_simple.bat examples/simple_test.c
 ```
 
 ### Option 2: Analyze your own C files
 ```bash
-bash run_simple.bat path/to/your/code.c
+bash bin/run_simple.bat path/to/your/code.c
 ```
 
 ### Option 3: Manual steps
@@ -88,7 +88,7 @@ After running analysis, check the `output/` directory:
 
 ## Need Help?
 
-- See `WINDOWS_GUIDE.md` for detailed documentation
+- See `README.md` for detailed documentation
 - Check `README.md` for background information
 - Example files in `examples/` directory
 
