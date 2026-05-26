@@ -1,10 +1,33 @@
 # LLVM Static Energy Estimation Pass
 
+[design](design.md) · [implementation](implementation.md) · [evaluation](evaluation.md) · [validation](validation.md)
+
 A compiler-integrated energy analysis tool built as an LLVM `MachineFunctionPass`. It estimates per-function and per-block energy consumption at compile time by combining per-instruction energy costs (sourced from published ARM microarchitecture data) with static block frequency analysis — no hardware profiler or physical measurement needed.
 
 ---
 
 ## How It Works
+
+### Simple Pipeline (Python-based — works on any OS)
+
+```
+your_code.c
+    │  gcc/clang -O2 -S
+    ▼
+ test.s  (assembly)
+    │  simple_energy_analysis.py
+    │       ↕ lookup in JSON energy model
+    ▼
+ energy_results_raw.json
+    │  convert_results.py
+    ▼
+ energy_results.json
+    │  visualize_energy.py
+    ▼
+ energy_report.html  (dark-themed, sortable, heat-map bars)
+```
+
+### Full LLVM Pass (Linux/WSL only — requires LLVM 14+ dev libraries)
 
 ```
 your_code.c
@@ -33,24 +56,85 @@ Every machine instruction is looked up in a JSON energy model mapping opcode nam
 
 ---
 
-## Quick Start (Windows — no build required)
+## Quick Start
 
-Requires only **Clang** and **Python 3** — no LLVM development libraries.
+### Windows (Git Bash) — No LLVM dev libraries needed
 
-```cmd
-cd C:\path\to\project
-run_simple.bat examples\simple_test.c
+```bash
+bash bin/run_simple.sh examples/simple_test.c                # run default test
+bash bin/run_simple.sh examples/matrix_multiply.c             # run specific test
+start output/energy_report.html                               # open report
 ```
 
-The report opens automatically in your browser. To run on any C file:
+> The script auto-detects whether `clang` or `gcc` is available and picks the right energy model (x86-64 or AArch64) based on the compiled assembly.
 
-```cmd
-run_simple.bat path\to\yourfile.c
+### Linux / WSL — Full LLVM Pass
+
+```bash
+bin/build.sh                        # build the compiled LLVM pass
+bin/run.sh                          # run on default test (llvm/test/sample.c)
+bin/run.sh examples/simple_test.c   # run on a specific test file
 ```
 
 ---
 
+## Simple Pipeline (Windows / Git Bash)
+
+> **No LLVM development libraries needed.** Works on any system with a C compiler and Python 3.
+
+### Prerequisites
+
+- **A C compiler**: `gcc` or `clang`
+- **Python 3.8+**
+
+### Try it
+
+```bash
+bash bin/run_simple.sh examples/simple_test.c
+```
+
+This runs the full pipeline in one command:
+1. Compiles C to assembly (`gcc -O2 -S`)
+2. Auto-detects architecture (x86-64 or AArch64)
+3. Selects the matching energy model
+4. Parses assembly and looks up per-instruction energy costs
+5. Generates an interactive HTML report
+
+### One Step at a Time (for explaining the process)
+
+```bash
+# Step 1: Compile C to assembly
+gcc -O2 -g -S examples/simple_test.c -o output/test.s
+
+# Step 2: Analyze energy
+python scripts/simple_energy_analysis.py output/test.s llvm/energy-models/x86_64.json output/energy_results_raw.json
+
+# Step 3: Convert to standard format
+python scripts/convert_results.py output/energy_results_raw.json output/energy_results.json
+
+# Step 4: Generate HTML report
+python llvm/visualize_energy.py output/energy_results.json --output output/energy_report.html
+
+# Step 5: Open the report
+start output/energy_report.html
+```
+
+### Test Files
+
+| File | Functions | What It Exercises |
+|------|-----------|-------------------|
+| `examples/simple_test.c` | 15 | Integer ops, FP, sorting, recursion, matrix multiply |
+| `examples/fp_compute.c` | 5 | Floating-point: dot product, FDIV-heavy harmonic mean |
+| `examples/matrix_multiply.c` | 3 | Standard vs. optimized matrix multiply comparison |
+| `llvm/test/sample.c` | 14 | Full comprehensive test suite |
+
+> **Note:** The script auto-detects which compiler is available (`clang` preferred, `gcc` fallback) and selects the correct energy model based on the compiled assembly architecture.
+
+---
+
 ## Full LLVM Pass (Linux / WSL)
+
+> ⚠️ **Requires LLVM 14+ development libraries.** Not available on vanilla Windows.
 
 ### Prerequisites
 
@@ -65,7 +149,7 @@ sudo apt install llvm-14 llvm-14-dev clang-14 cmake ninja-build python3
 ### Build
 
 ```bash
-cmake -S . -B build \
+cmake -S llvm -B build \
       -DLLVM_DIR=/usr/lib/llvm-14/lib/cmake/llvm \
       -DCMAKE_BUILD_TYPE=Release \
       -G Ninja
@@ -110,7 +194,7 @@ The model lives in `llvm/energy-models/aarch64.json` and targets the **ARM Corte
 | NEON / SIMD | `FADDv4f32`, `FMLAv2f64` | 9–120 pJ |
 | Crypto | `AESErr`, `SHA256Hrrr` | 12–15 pJ |
 
-Values are cross-validated against published data from Pallister et al. (BEEBS 2013), the ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A), and Tiwari et al. (IEEE TVLSI 1994). Error vs. measured data is under 12% across all instruction classes.
+Values are **informed by** published data from Pallister et al. (BEEBS 2013), the ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A), and Tiwari et al. (IEEE TVLSI 1994). Note: reference data comes from older process nodes (28–45 nm) and has been scaled to approximate 7 nm — these are heuristic estimates, not validated measurements.
 
 Both canonical assembly mnemonics (`ADD`) and LLVM-internal opcode names (`ADDWri`, `ADDXrs`) are included so the model matches whatever `TargetInstrInfo::getName()` returns.
 
@@ -145,14 +229,17 @@ The innermost loop of a 16×16×16 matrix multiply runs with a `FreqScale` of 40
 `llvm/visualize_energy.py` reads the JSON output and generates a self-contained HTML report. Pure Python 3, no pip installs needed.
 
 ```bash
-python3 llvm/visualize_energy.py results.json \
-        --output report.html \
-        --title "My Project — AArch64 Cortex-A55"
+# Linux / macOS
+python3 llvm/visualize_energy.py results.json --output report.html
+
+# Windows (Git Bash)
+python llvm/visualize_energy.py output/energy_results.json --output output/energy_report.html
+start output/energy_report.html    # open in browser
 ```
 
 The report includes:
 - Sortable function summary table with heat-map bars
-- 🔴 HOT / 🟡 WARM / 🟢 COOL category badges
+- [HIGH] / [MEDIUM] / [LOW] energy category badges
 - Collapsible per-function block breakdown
 - ASCII summary to stdout
 
@@ -177,48 +264,80 @@ The report includes:
 
 ```
 .
-├── run_simple.bat                  Windows quick-run script (no build needed)
-├── llvm/
+├── README.md                       this file — project overview
+├── design.md                       architecture approach and alternatives
+├── implementation.md               LLVM pass internals and build details
+├── evaluation.md                   metrics, baseline comparison, test cases
+├── validation.md                   cross-check against published literature
+├── bin/
+│   ├── build.sh                    build the LLVM pass (Linux/WSL)
+│   ├── run.sh                      run the full LLVM pass pipeline (Linux/WSL)
+│   ├── run_simple.bat              Windows CMD quick-run script (no build)
+│   ├── run_simple.sh               Git Bash / Linux quick-run script (auto-detects gcc/clang)
+│   └── run_energy.bat              redirect to simple pipeline (Windows CMD)
+│
+├── llvm/                           # main LLVM pass source
 │   ├── CMakeLists.txt              outer CMake — find_package(LLVM)
-│   ├── README.md                   detailed technical documentation
-│   ├── PROGRESS.md                 completion status and bug log
+│   ├── progress.md                 completion status and bug log
 │   ├── visualize_energy.py         HTML + ASCII report generator
 │   ├── energy-models/
-│   │   └── aarch64.json            ARM Cortex-A55 model — 400+ opcodes
+│   │   ├── aarch64.json            ARM Cortex-A55 model — 624 opcodes
+│   │   └── x86_64.json            x86-64 model (experimental)
 │   ├── test/
-│   │   ├── sample.c                12-function test covering diverse ISA
+│   │   ├── sample.c                14-function comprehensive test
 │   │   └── run_test.sh             end-to-end Linux/WSL pipeline script
-│   └── llvm/
-│       ├── CMakeLists.txt          inner CMake
-│       ├── include/llvm/Analysis/
-│       │   └── EnergyModel.h       JSON model loader — header
-│       └── lib/
-│           ├── Analysis/
-│           │   ├── EnergyModel.cpp JSON loader implementation
-│           │   └── CMakeLists.txt
-│           └── CodeGen/
-│               ├── EnergyEstimation.cpp  the MachineFunctionPass
-│               └── CMakeLists.txt
-├── scripts/
-│   ├── simple_energy_analysis.py   assembly parser for Windows simple mode
-│   └── convert_results.py          format converter for the visualizer
+│   └── lib/
+│       ├── Analysis/
+│       │   ├── EnergyModel.h       JSON model loader header
+│       │   ├── EnergyModel.cpp     JSON loader implementation
+│       │   └── CMakeLists.txt
+│       └── CodeGen/
+│           ├── EnergyEstimation.cpp  MachineFunctionPass (417 lines)
+│           └── CMakeLists.txt
+│
+├── examples/                       # test case source files
+│   ├── simple_test.c               13-function comprehensive test
+│   ├── fp_compute.c                FP-heavy test (4 functions)
+│   ├── matrix_multiply.c           Matrix multiply (2 implementations)
+│   └── test.c                      5-function basic test
+│
+├── scripts/                        # Python analysis and validation tools
+│   ├── simple_energy_analysis.py   assembly parser (simple pipeline)
+│   ├── convert_results.py          format converter
+│   ├── validate_model.py           automated cross-check against literature
+│   └── visualize.py                legacy HTML report generator
+│
 ├── models/
-│   └── energy_model.json           legacy basic model
-└── examples/
-    ├── simple_test.c
-    └── ...
+│   └── energy_model.json           legacy 28 nm model (~60 opcodes)
+└── output/                         generated reports (after running)
 ```
 
+**Total: 36+ test functions across 5 test files · 624 opcodes in energy model · 3,100+ lines of C++/Python**
+
 ---
+
+> **⚠️ IMPORTANT DISCLAIMER:** This tool produces **static heuristic energy estimates** — not measured values. The energy model is **informed by** published academic data but has **not been validated against physical hardware measurements**. All numerical outputs should be treated as **relative guidance** (function A costs more than function B) rather than absolute predictions.
 
 ## Known Limitations
 
 | Limitation | Effect |
 |---|---|
-| Static frequency only | ±30% error on branch-heavy code vs. profile-guided |
-| L1 cache hit assumed | Cache misses can cost 3–25× more |
-| No operand switching activity | ~10% underestimate on ALU energy |
-| No pipeline / IPC modelling | May overcount on superscalar paths |
+| Static frequency only | Estimates can be ±30% off on branch-heavy code vs. actual execution |
+| L1 cache hit ALWAYS assumed | Cache misses can cost 3–25× more — the #1 source of underestimation |
+| No operand switching activity | Likely underestimates data-dependent ALU energy by ~10% |
+| No pipeline / IPC modelling | May overcount on superscalar paths where instructions execute in parallel |
+| No hardware validation | All claims are heuristic — see validation.md for full caveats |
+
+---
+
+## Additional Documentation
+
+| Document | Contents |
+|---|---|
+| [design.md](design.md) | Architecture approach, key design decisions, alternatives considered |
+| [implementation.md](implementation.md) | LLVM pass internals, file structure, build system, energy model schema |
+| [evaluation.md](evaluation.md) | Metrics, baseline comparison, test case results, validation |
+| [validation.md](validation.md) | Detailed cross-check against published literature |
 
 ---
 

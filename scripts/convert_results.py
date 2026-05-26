@@ -12,10 +12,12 @@ with open(in_file) as f:
 functions = []
 for fname, fdata in raw.get("functions", {}).items():
     e = fdata.get("energy_pj", 0.0)
+    ib = fdata.get("instruction_breakdown", {})
     functions.append(
         {
             "name": fname,
             "total_energy_pJ": e,
+            "instruction_breakdown": ib,
             "blocks": [
                 {
                     "name": "body",
@@ -29,7 +31,7 @@ for fname, fdata in raw.get("functions", {}).items():
     )
 
 functions.sort(key=lambda f: f["total_energy_pJ"], reverse=True)
-out = {"arch": "AArch64", "unit": "pJ", "functions": functions}
+out = {"arch": raw.get("arch", "unknown"), "unit": "pJ", "functions": functions}
 
 with open(out_file, "w") as f:
     json.dump(out, f, indent=2)

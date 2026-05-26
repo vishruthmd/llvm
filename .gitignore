@@ -47,3 +47,14 @@ examples/a.out
 
 # Logs
 *.log
+
+# Artifacts
+nul
+suggestions.md
+
+# Demo output
+fresh_report.html
+
+# AI/IDE config folders
+.claude/
+.zed/

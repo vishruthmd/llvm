@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """
-visualize_energy.py — Energy Estimation Pass Report Generator
-=============================================================
+visualize_energy.py -- Energy Estimation Pass Report Generator
+==============================================================
 Reads the JSON output written by the LLVM EnergyEstimationPass
 (-energy-output flag) and generates a self-contained HTML report with:
-  - Per-function energy summary table with heat-map bar charts
+  - Per-function energy summary table with bar charts
+  - SVG donut chart for energy distribution
   - Collapsible per-block breakdown tables
-  - Color coding: hot (red) / warm (yellow) / cool (green)
+  - Source-level annotation (when --source and --remarks are provided)
+  - Per-instruction opcode breakdown
+  - Dark/light mode toggle
   - Sortable columns via pure JavaScript
   - A plain-text ASCII summary printed to stdout
 
@@ -16,22 +19,24 @@ Usage
 
 Options
 -------
-  --output FILENAME     Write HTML report to FILENAME (default: energy_report.html)
-  --top N               Show only the top N most expensive functions (default: all)
-  --min-energy FLOAT    Exclude functions below this energy threshold (pJ)
-  --title STRING        Report title shown in the HTML header
-  --no-html             Skip HTML generation; only print ASCII summary
+  --output FILENAME      Write HTML report to FILENAME (default: energy_report.html)
+  --top N                Show only the top N most expensive functions (default: all)
+  --min-energy FLOAT     Exclude functions below this energy threshold (pJ)
+  --title STRING         Report title shown in the HTML header
+  --no-html              Skip HTML generation; only print ASCII summary
+  --source FILE          Path to the original .c source file for line-level annotation
+  --remarks FILE         Path to the -Rpass-analysis=energy remarks text file
 
 Example
 -------
-  # Compile and run pass (see README.md for full pipeline)
+  # Generate report with source annotation
   clang -O2 -target aarch64-linux-gnu -emit-llvm -c sample.c -o sample.bc
-  llc -load ./EnergyEstimationPass.so -energy-estimation          \\
-      -energy-model energy-models/aarch64.json                    \\
-      -energy-output results.json                                  \\
+  llc -load ./EnergyEstimationPass.so -energy-estimation      \\
+      -energy-model energy-models/aarch64.json                \\
+      -energy-output results.json                              \\
       -Rpass-analysis=energy sample.bc -o sample.s 2>remarks.txt
-  python visualize_energy.py results.json --output report.html
-
+  python visualize_energy.py results.json \\
+      --source sample.c --remarks remarks.txt --output report.html
 """
 
 from __future__ import annotations
@@ -39,9 +44,13 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
+import re
 import sys
+from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -66,6 +75,231 @@ def load_results(path: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Source annotation support
+# ---------------------------------------------------------------------------
+
+
+def parse_remarks(remarks_path: str) -> dict[str, dict[str, Any]]:
+    """Parse LLVM -Rpass-analysis=energy remarks to extract block->source mappings.
+
+    Returns a dict: func_name -> {block_name -> {line, col, raw_energy, weighted_energy}}
+    """
+    p = Path(remarks_path)
+    if not p.exists():
+        print(f"[visualize_energy] WARNING: remarks file not found: {remarks_path}",
+              file=sys.stderr)
+        return {}
+
+    func_map: dict[str, dict[str, Any]] = defaultdict(dict)
+    block_pattern = re.compile(
+        r"remark:\s+(.+?):(\d+):(\d+):\s+\[energy\]\s+BlockEnergy:"
+        r"\s+Function=(\S+)\s+Block=(\S+)"
+        r"\s+RawEnergy=([\d.]+)"
+        r"\s+FreqScale=([\d.]+)"
+        r"\s+WeightedEnergy=([\d.]+)"
+        r"\s+Instructions=(\d+)"
+    )
+    func_pattern = re.compile(
+        r"remark:\s+(.+?):(\d+):(\d+):\s+\[energy\]\s+FunctionEnergy:"
+        r"\s+Function=(\S+)"
+        r"\s+TotalEnergy=([\d.]+)"
+    )
+
+    content = p.read_text(encoding="utf-8")
+    for match in block_pattern.finditer(content):
+        source_file = match.group(1)
+        line = int(match.group(2))
+        col = int(match.group(3))
+        func_name = match.group(4)
+        block_name = match.group(5)
+        raw_energy = float(match.group(6))
+        freq_scale = float(match.group(7))
+        weighted_energy = float(match.group(8))
+        instructions = int(match.group(9))
+
+        entry = func_map.setdefault(func_name, {})
+        entry[block_name] = {
+            "source_file": source_file,
+            "line": line,
+            "col": col,
+            "raw_energy": raw_energy,
+            "freq_scale": freq_scale,
+            "weighted_energy": weighted_energy,
+            "instructions": instructions,
+        }
+
+    # Parse function-level remarks too (capture for potential cross-checking)
+    for match in func_pattern.finditer(content):
+        _func_name = match.group(4)
+        _total_energy = float(match.group(5))
+
+    print(f"[visualize_energy] Parsed {len(func_map)} function(s) from remarks",
+          file=sys.stderr)
+    total_blocks = sum(len(blocks) for blocks in func_map.values())
+    print(f"[visualize_energy]   {total_blocks} block(s) with source locations",
+          file=sys.stderr)
+    return dict(func_map)
+
+
+def build_source_annotation(
+    source_path: str,
+    functions: list[dict],
+    remark_map: dict[str, dict[str, Any]],
+) -> str:
+    """Generate HTML for source-level energy annotation.
+
+    Maps block-level energy data back to source lines using the parsed
+    LLVM remark information, and produces a gcov-style annotated source view.
+    """
+    p = Path(source_path)
+    if not p.exists():
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">source file not found: '
+            f'{html.escape(source_path)}</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'Could not find source file: {html.escape(str(p))}</div></section>'
+        )
+
+    if not remark_map:
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">no remarks data</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'No remark data available. Pass --remarks FILE with the '
+            f'-Rpass-analysis=energy output to enable source annotation.</div></section>'
+        )
+
+    lines = p.read_text(encoding="utf-8").splitlines()
+    if not lines:
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation</h2>'
+            f'<div style="padding:20px;color:var(--muted);">Empty source file.</div></section>'
+        )
+
+    # Build line -> energy mapping from remark data
+    # We track: total weighted energy per source line
+    line_energy: dict[int, float] = defaultdict(float)
+    line_raw_energy: dict[int, float] = defaultdict(float)
+    line_blocks: dict[int, list[str]] = defaultdict(list)
+
+    all_energies: list[float] = []
+    for func in functions:
+        func_name = func.get("name", "")
+        blocks = func.get("blocks", [])
+        func_remarks = remark_map.get(func_name, {})
+
+        for block in blocks:
+            block_name = block.get("name", "")
+            weighted = block.get("weighted_energy_pJ", 0.0)
+            raw = block.get("raw_energy_pJ", 0.0)
+
+            # Try to find this block in remarks
+            rem = func_remarks.get(block_name)
+            if rem:
+                line_num = rem["line"]
+                line_energy[line_num] += weighted
+                line_raw_energy[line_num] += raw
+                line_blocks[line_num].append(block_name)
+                all_energies.append(weighted)
+
+    if not all_energies:
+        # Fallback: No line-level data, show a note
+        return (
+            f'<section class="panel">'
+            f'<h2>[D] Source Annotation <span class="hint">'
+            f'no line-level mapping available</span></h2>'
+            f'<div style="padding:20px;color:var(--muted);">'
+            f'No block-to-source-line mappings found in the remarks file. '
+            f'Make sure the source was compiled with -g and the correct '
+            f'-Rpass-analysis=energy flag.</div></section>'
+        )
+
+    max_energy = max(all_energies) if all_energies else 1.0
+    if max_energy <= 0:
+        max_energy = 1.0
+
+    # Generate HTML rows
+    source_rows: list[str] = []
+    for i, line_text in enumerate(lines):
+        line_num = i + 1
+        energy = line_energy.get(line_num, 0.0)
+        raw_energy = line_raw_energy.get(line_num, 0.0)
+        blocks_on_line = line_blocks.get(line_num, [])
+
+        if energy > 0:
+            ratio = energy / max_energy
+            color = energy_color(energy, max_energy)
+            bar_w = max(round(ratio * 100), 2)
+            # Build a tooltip with block info
+            tooltip_parts = [f"Energy: {energy:.2f} pJ (raw: {raw_energy:.2f} pJ)"]
+            for bname in blocks_on_line[:5]:
+                tooltip_parts.append(f"Block: {bname}")
+            tooltip = " | ".join(tooltip_parts)
+            bar_html = (
+                f'<div class="src-bar" style="width:{bar_w}%;'
+                f'background:{color};" title="{html.escape(tooltip)}"></div>'
+            )
+            line_class = "src-line src-line-hot"
+        else:
+            bar_html = ""
+            line_class = "src-line"
+
+        # Escape the line text, preserve leading whitespace visually
+        escaped_line = html.escape(line_text)
+        if not escaped_line:
+            escaped_line = " "
+
+        source_rows.append(
+            f'<tr class="{line_class}">'
+            f'<td class="src-lineno">{line_num}</td>'
+            f'<td class="src-bar-cell">{bar_html}</td>'
+            f'<td class="src-energy-num">{energy:,.2f}</td>'
+            f'<td class="src-code"><pre>{escaped_line}</pre></td>'
+            f'</tr>'
+        )
+
+    # Summary stats for the source annotation
+    total_source_energy = sum(line_energy.values())
+
+    return f"""
+    <section class="panel" id="sec-source">
+      <h2>[D] Source-Level Energy Annotation
+        <span class="hint">
+          {len(source_rows)} lines &middot;
+          {len([l for l in line_energy.values() if l > 0])} hot lines &middot;
+          {total_source_energy:,.2f} pJ mapped
+          &mdash; overview in <a href="#sec-summary"
+          style="color:var(--accent);text-decoration:none;">[A]</a>
+        </span>
+      </h2>
+      <div class="src-container">
+        <table class="src-table">
+          <thead>
+            <tr>
+              <th class="src-lineno-th">Line</th>
+              <th class="src-bar-th">Energy</th>
+              <th class="src-energy-th">pJ</th>
+              <th>Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {"".join(source_rows)}
+          </tbody>
+        </table>
+      </div>
+      <div style="padding:8px 20px 12px;font-size:0.72rem;color:var(--muted);">
+        <strong>Tip:</strong> Hover over the energy bars to see block details.
+        Hotter bars (red) = higher energy cost. Only lines with debug info
+        are annotated — compiler-generated code (loop preheaders, exit blocks)
+        may not map to visible source lines.
+      </div>
+    </section>
+    """
+
+
+# ---------------------------------------------------------------------------
 # Colour helpers
 # ---------------------------------------------------------------------------
 
@@ -75,7 +309,6 @@ def energy_color(energy: float, max_energy: float) -> str:
     if max_energy <= 0:
         return "rgb(60,180,75)"
     ratio = min(energy / max_energy, 1.0)
-    # Smooth interpolation: green → yellow → red
     if ratio < 0.5:
         t = ratio / 0.5
         r = int(60 + t * (255 - 60))
@@ -89,13 +322,33 @@ def energy_color(energy: float, max_energy: float) -> str:
     return f"rgb({r},{g},{b})"
 
 
-def heat_class(ratio: float) -> str:
-    """Return a CSS class name based on the energy ratio."""
+# SVG donut chart colours (qualitative palette)
+DONUT_COLORS = [
+    "#6c8ff7", "#f87171", "#34d399", "#fbbf24",
+    "#a78bfa", "#fb923c", "#22d3ee", "#f472b6",
+    "#4ade80", "#facc15",
+]
+
+# Table colour classes
+COLOUR_HOT = "#f87171"
+COLOUR_WARM = "#fbbf24"
+COLOUR_COOL = "#34d399"
+
+
+def heat_css_class(ratio: float) -> str:
     if ratio >= 0.75:
-        return "heat-hot"
+        return "cell-hot"
     if ratio >= 0.35:
-        return "heat-warm"
-    return "heat-cool"
+        return "cell-warm"
+    return "cell-cool"
+
+
+def badge_html(ratio: float) -> str:
+    if ratio >= 0.75:
+        return '<span class="badge badge-hot">HIGH</span>'
+    if ratio >= 0.35:
+        return '<span class="badge badge-warm">MEDIUM</span>'
+    return '<span class="badge badge-cool">LOW</span>'
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +388,7 @@ def print_ascii_summary(data: dict, top_n: int | None, min_energy: float) -> Non
 
     print(f"\n{BOLD}{CYAN}{'=' * 72}{RESET}")
     print(
-        f"{BOLD}{CYAN}  Static Energy Estimation Report  —  {arch}  (unit: {unit}){RESET}"
+        f"{BOLD}{CYAN}  Static Energy Estimation Report  --  {arch}  (unit: {unit}){RESET}"
     )
     print(f"{BOLD}{CYAN}{'=' * 72}{RESET}")
     print(f"  Functions analysed : {len(functions)}")
@@ -170,7 +423,7 @@ def print_ascii_summary(data: dict, top_n: int | None, min_energy: float) -> Non
 
     print()
 
-    # Per-function block breakdown (top 3 functions only to keep output compact)
+    # Per-function block breakdown (top 3 functions only)
     for fn in functions[:3]:
         blocks = fn.get("blocks", [])
         if not blocks:
@@ -191,7 +444,6 @@ def print_ascii_summary(data: dict, top_n: int | None, min_energy: float) -> Non
             freq = blk.get("freq_scale", 0.0)
             wt = blk.get("weighted_energy_pJ", 0.0)
             ic = blk.get("instructions", 0)
-            pct_b = wt / fn_energy * 100 if fn_energy > 0 else 0.0
             bname_str = bname if len(bname) <= 30 else bname[:27] + "..."
             print(f"    {bname_str:<30} {raw:>10.2f} {freq:>10.4f} {wt:>13.2f} {ic:>7}")
         print()
@@ -202,6 +454,9 @@ def print_ascii_summary(data: dict, top_n: int | None, min_energy: float) -> Non
 # ---------------------------------------------------------------------------
 
 CSS = """
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ---- Light / Dark theme variables ---- */
 :root {
   --bg: #0f1117;
   --card: #1a1d27;
@@ -210,130 +465,252 @@ CSS = """
   --text: #e2e8f0;
   --muted: #8892a4;
   --accent: #6c8ff7;
-  --hot: #f87171;
-  --warm: #fbbf24;
-  --cool: #34d399;
   --link: #818cf8;
+  --input-bg: #1a1d27;
+  --input-border: #2e3350;
+  --shadow: rgba(0,0,0,0.3);
 }
-* { box-sizing: border-box; margin: 0; padding: 0; }
+.theme-light {
+  --bg: #f5f7fa;
+  --card: #ffffff;
+  --card2: #edf2f7;
+  --border: #cbd5e1;
+  --text: #1a202c;
+  --muted: #64748b;
+  --accent: #4a6cf7;
+  --link: #4a6cf7;
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --shadow: rgba(0,0,0,0.08);
+}
+
 body {
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
   background: var(--bg);
   color: var(--text);
   line-height: 1.6;
   padding: 0 0 60px 0;
+  transition: background 0.45s ease, color 0.4s ease, border-color 0.35s ease, box-shadow 0.35s ease;
 }
+
+/* Smooth transitions for all themed elements */
+header, .stat-card, section.panel, .footnote, .badge, .theme-toggle,
+details > summary, th, td, .bar-outer, .donut-legend-item {
+  transition: background 0.35s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@keyframes themeSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 header {
-  background: linear-gradient(135deg, #1e2340 0%, #0f1117 100%);
-  border-bottom: 1px solid var(--border);
-  padding: 28px 40px 22px;
+  background: #151828;
+  border-bottom: 1px solid #2e3350;
+  padding: 24px 40px 18px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
 }
-header h1 { font-size: 1.8rem; font-weight: 700; color: #fff; letter-spacing: -0.5px; }
-header .sub { color: var(--muted); font-size: 0.9rem; margin-top: 6px; }
+header .head-left h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #6c8ff7;
+  letter-spacing: -0.5px;
+}
+header .head-left .sub {
+  color: #8892a4;
+  font-size: 0.78rem;
+  margin-top: 4px;
+}
 header .badge {
+  background: #22263a;
+  border-color: #2e3350;
+  color: #8892a4;
+}
+header .theme-toggle {
+  background: #1a1d27;
+  border-color: #2e3350;
+  color: #8892a4;
+}
+
+/* Theme toggle button -- icon-only circular button */
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease, box-shadow 0.25s ease;
+}
+.theme-toggle:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+  box-shadow: 0 0 20px rgba(108,143,247,0.2);
+  transform: scale(1.1);
+}
+.theme-toggle:active {
+  transform: scale(0.9);
+}
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.5s ease;
+}
+.theme-toggle.spin svg {
+  animation: themeSpin 0.5s ease;
+}
+
+.badge {
   display: inline-block;
   background: var(--card2);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 3px 10px;
-  font-size: 0.78rem;
-  color: var(--accent);
-  margin: 4px 4px 0 0;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  color: var(--muted);
+  margin: 2px 4px 2px 0;
 }
-.container { max-width: 1200px; margin: 0 auto; padding: 32px 20px; }
+
+.container { max-width: 1200px; margin: 0 auto; padding: 28px 20px; }
+
+/* Summary stat cards */
 .summary-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 36px;
+  gap: 14px;
+  margin-bottom: 28px;
 }
 .stat-card {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 18px 22px;
+  border-radius: 8px;
+  padding: 16px 18px;
+  box-shadow: 0 1px 4px var(--shadow);
 }
-.stat-card .label { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
-.stat-card .value { font-size: 1.6rem; font-weight: 700; color: #fff; margin-top: 4px; }
-.stat-card .unit  { font-size: 0.8rem; color: var(--muted); }
+.stat-card .label {
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.stat-card .value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+.stat-card .unit {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+/* Panel sections */
 section.panel {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 12px;
-  margin-bottom: 28px;
+  border-radius: 8px;
+  margin-bottom: 24px;
   overflow: hidden;
+  box-shadow: 0 1px 4px var(--shadow);
 }
 section.panel h2 {
-  padding: 16px 22px;
-  font-size: 1rem;
+  padding: 14px 20px;
+  font-size: 0.88rem;
   font-weight: 600;
   border-bottom: 1px solid var(--border);
   background: var(--card2);
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
-section.panel h2 .icon { font-size: 1.1rem; }
+section.panel h2 .hint {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 400;
+}
+
+/* Tables */
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
 }
 thead th {
-  padding: 10px 16px;
+  padding: 8px 14px;
   text-align: left;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.7px;
+  letter-spacing: 0.5px;
   color: var(--muted);
   background: var(--card2);
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   user-select: none;
   white-space: nowrap;
+  font-weight: 600;
 }
-thead th:hover { color: var(--text); }
-thead th.sorted-asc::after  { content: " ↑"; color: var(--accent); }
-thead th.sorted-desc::after { content: " ↓"; color: var(--accent); }
+thead th:hover { color: var(--accent); }
+thead th.num { text-align: right; }
+thead th.sorted-asc::after  { content: " ^"; color: var(--accent); }
+thead th.sorted-desc::after { content: " v"; color: var(--accent); }
 tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: var(--card2); }
-td { padding: 10px 16px; vertical-align: middle; }
-td.name { font-family: 'Cascadia Code', 'Consolas', monospace; font-size: 0.85rem; }
+td { padding: 8px 14px; vertical-align: middle; }
+td.name { font-size: 0.82rem; }
 td.number { text-align: right; font-variant-numeric: tabular-nums; }
-.bar-cell { width: 180px; }
+
+.bar-cell { width: 160px; }
 .bar-outer {
-  background: rgba(255,255,255,0.06);
-  border-radius: 4px;
+  background: rgba(128,128,128,0.12);
+  border-radius: 3px;
   height: 10px;
   overflow: hidden;
 }
 .bar-inner {
   height: 100%;
-  border-radius: 4px;
+  border-radius: 3px;
   transition: width 0.3s ease;
 }
-.heat-hot  { color: var(--hot); }
-.heat-warm { color: var(--warm); }
-.heat-cool { color: var(--cool); }
-.badge-cat {
+
+.cell-hot  { color: var(--hot, #f87171); }
+.cell-warm { color: var(--warm, #fbbf24); }
+.cell-cool { color: var(--cool, #34d399); }
+:root { --hot: #f87171; --warm: #fbbf24; --cool: #34d399; }
+
+.badge-hot, .badge-warm, .badge-cool {
   display: inline-block;
-  padding: 1px 8px;
-  border-radius: 100px;
-  font-size: 0.72rem;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 0.68rem;
   font-weight: 600;
+  letter-spacing: 0.3px;
 }
 .badge-hot  { background: rgba(248,113,113,0.15); color: var(--hot); }
-.badge-warm { background: rgba(251,191,36, 0.15); color: var(--warm); }
-.badge-cool { background: rgba(52, 211,153,0.15); color: var(--cool); }
+.badge-warm { background: rgba(251,191,36,  0.15); color: var(--warm); }
+.badge-cool { background: rgba(52, 211,153, 0.15); color: var(--cool); }
+
+/* Collapsible block details */
 details { border-top: 1px solid var(--border); }
 details > summary {
-  padding: 12px 22px;
+  padding: 10px 20px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 0.88rem;
+  gap: 8px;
+  font-size: 0.82rem;
   font-weight: 500;
   background: var(--card2);
   list-style: none;
@@ -341,20 +718,169 @@ details > summary {
 }
 details > summary::-webkit-details-marker { display: none; }
 details > summary:hover { background: rgba(108,143,247,0.08); }
-details > summary .arrow { transition: transform 0.2s; font-size: 0.8rem; }
+details > summary .arrow { transition: transform 0.2s; font-size: 0.7rem; color: var(--muted); }
 details[open] > summary .arrow { transform: rotate(90deg); }
 details > .block-table { padding: 0; }
-.block-table table { font-size: 0.84rem; }
-.block-table thead th { font-size: 0.72rem; }
-.footnote {
+.block-table table { font-size: 0.78rem; }
+.block-table thead th { font-size: 0.65rem; }
+
+/* Opcode breakdown nested inside function details */
+.opcode-detail {
+  border-top: 1px solid var(--border);
+}
+.opcode-detail > summary {
+  padding: 7px 20px 7px 40px;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 500;
+  background: rgba(108,143,247,0.03);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+.opcode-detail > summary::-webkit-details-marker { display: none; }
+.opcode-detail > summary:hover { background: rgba(108,143,247,0.08); }
+.opcode-detail > summary .arrow { transition: transform 0.2s; font-size: 0.65rem; color: var(--muted); }
+.opcode-detail[open] > summary .arrow { transform: rotate(90deg); }
+.opcode-detail > .opcode-table { padding: 0; }
+.opcode-table table { font-size: 0.73rem; }
+.opcode-table thead th { font-size: 0.6rem; }
+.opcode-table td.opcode code {
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+/* SVG donut chart */
+.donut-section {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 20px;
+  align-items: center;
+}
+.donut-chart-container {
+  flex: 0 0 260px;
+  display: flex;
+  justify-content: center;
+}
+.donut-legend {
+  flex: 1;
+  min-width: 200px;
+}
+.donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
   font-size: 0.78rem;
+}
+.donut-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+.donut-legend-pct {
+  margin-left: auto;
   color: var(--muted);
-  margin-top: 36px;
-  padding: 16px 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== Source Annotation Styles ===== */
+.src-container {
+  overflow-x: auto;
+  max-height: 600px;
+  overflow-y: auto;
+}
+.src-table {
+  font-size: 0.78rem;
+  border-collapse: collapse;
+  width: 100%;
+}
+.src-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--card2);
+  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  font-size: 0.65rem;
+}
+.src-lineno-th { width: 50px; text-align: right; }
+.src-bar-th { width: 100px; text-align: center; }
+.src-energy-th { width: 80px; text-align: right; }
+
+.src-line td {
+  padding: 0;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(128,128,128,0.05);
+}
+.src-line:hover td {
+  background: rgba(108,143,247,0.05);
+}
+.src-lineno {
+  width: 50px;
+  text-align: right;
+  padding: 1px 8px !important;
+  color: var(--muted);
+  font-size: 0.7rem;
+  user-select: none;
+  background: var(--card2);
+  border-right: 1px solid var(--border);
+}
+.src-bar-cell {
+  width: 100px;
+  padding: 1px 4px !important;
+}
+.src-bar {
+  height: 14px;
+  min-width: 2px;
+  border-radius: 2px;
+  transition: width 0.2s ease;
+  cursor: help;
+}
+.src-energy-num {
+  width: 80px;
+  text-align: right;
+  padding: 1px 8px !important;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+.src-code {
+  padding: 1px 12px !important;
+}
+.src-code pre {
+  font-family: 'Cascadia Code', 'Consolas', 'Courier New', monospace;
+  font-size: 0.76rem;
+  margin: 0;
+  white-space: pre;
+  tab-size: 4;
+  -moz-tab-size: 4;
+  color: var(--text);
+}
+
+/* Hot line highlighting */
+.src-line-hot td {
+  background: rgba(248,113,113,0.04);
+}
+.src-line-hot:hover td {
+  background: rgba(248,113,113,0.08);
+}
+
+/* Footnote */
+.footnote {
+  font-size: 0.74rem;
+  color: var(--muted);
+  margin-top: 28px;
+  padding: 14px 18px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 8px;
   background: var(--card);
-  line-height: 1.8;
+  line-height: 1.7;
 }
 .footnote a { color: var(--link); text-decoration: none; }
 .footnote a:hover { text-decoration: underline; }
@@ -367,11 +893,9 @@ function sortTable(tableId, col, isNumeric) {
   const rows  = Array.from(tbody.querySelectorAll('tr'));
   const ths   = table.querySelectorAll('thead th');
 
-  // Determine sort direction
   const th = ths[col];
   const asc = !th.classList.contains('sorted-asc');
 
-  // Clear all sorted markers
   ths.forEach(h => { h.classList.remove('sorted-asc', 'sorted-desc'); });
   th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
 
@@ -386,6 +910,34 @@ function sortTable(tableId, col, isNumeric) {
   });
   rows.forEach(r => tbody.appendChild(r));
 }
+
+function toggleTheme() {
+  const body = document.body;
+  const btn = document.getElementById('themeBtn');
+  body.classList.toggle('theme-light');
+  const isLight = body.classList.contains('theme-light');
+  btn.innerHTML = isLight
+    ? '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>'
+    : '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  btn.classList.remove('spin');
+  void btn.offsetWidth;
+  btn.classList.add('spin');
+  localStorage.setItem('theme', isLight ? 'light' : 'dark');
+}
+
+(function() {
+  const saved = localStorage.getItem('theme');
+  const body = document.body;
+  const btn = document.getElementById('themeBtn');
+  const moonSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+  const sunSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+  if (saved === 'light') {
+    body.classList.add('theme-light');
+    if (btn) btn.innerHTML = sunSvg;
+  } else {
+    if (btn) btn.innerHTML = moonSvg;
+  }
+})();
 """.strip()
 
 
@@ -406,15 +958,147 @@ def pct_bar_html(ratio: float, color: str) -> str:
     )
 
 
-def badge_html(ratio: float) -> str:
-    if ratio >= 0.75:
-        return '<span class="badge-cat badge-hot">HOT</span>'
-    if ratio >= 0.35:
-        return '<span class="badge-cat badge-warm">WARM</span>'
-    return '<span class="badge-cat badge-cool">COOL</span>'
+def _build_donut_chart(functions: list[dict], total_all: float) -> str:
+    """Generate SVG donut chart for energy distribution (top 8 functions + other)."""
+    top = functions[:8]
+    other_energy = sum(f.get("total_energy_pJ", 0.0) for f in functions[8:])
+    if other_energy > 0:
+        top.append({"name": "(other)", "total_energy_pJ": other_energy})
+
+    if not top or total_all <= 0:
+        return '<p style="padding:20px;color:var(--muted);font-size:0.82rem;">No data for chart.</p>'
+
+    # Compute SVG arc paths
+    cx, cy, r, inner_r = 130, 130, 100, 60
+    total = total_all
+    segments = []
+    legend_items = []
+    start_angle = -90  # start at top
+
+    for i, fn in enumerate(top):
+        energy = fn.get("total_energy_pJ", 0.0)
+        pct = energy / total * 100
+        angle = (energy / total) * 360.0
+        color = DONUT_COLORS[i % len(DONUT_COLORS)]
+        end_angle = start_angle + angle
+
+        # SVG arc path
+        start_rad = math.radians(start_angle)
+        end_rad = math.radians(end_angle)
+        x1 = cx + r * math.cos(start_rad)
+        y1 = cy + r * math.sin(start_rad)
+        x2 = cx + r * math.cos(end_rad)
+        y2 = cy + r * math.sin(end_rad)
+        large_arc = 1 if angle > 180 else 0
+
+        # Inner circle points (for the donut hole)
+        ix1 = cx + inner_r * math.cos(start_rad)
+        iy1 = cy + inner_r * math.sin(start_rad)
+        ix2 = cx + inner_r * math.cos(end_rad)
+        iy2 = cy + inner_r * math.sin(end_rad)
+
+        path_d = (
+            f"M {x1},{y1} "
+            f"A {r},{r} 0 {large_arc},1 {x2},{y2} "
+            f"L {ix2},{iy2} "
+            f"A {inner_r},{inner_r} 0 {large_arc},0 {ix1},{iy1} "
+            f"Z"
+        )
+
+        segments.append(
+            f'<path d="{path_d}" fill="{color}" '
+            f'stroke="var(--bg)" stroke-width="1.5" '
+            f'title="{html.escape(fn["name"])}: {pct:.1f}%" />'
+        )
+
+        name_str = fn["name"] if len(fn["name"]) <= 28 else fn["name"][:25] + "..."
+        legend_items.append(
+            f'<div class="donut-legend-item">'
+            f'<span class="donut-legend-swatch" style="background:{color};"></span>'
+            f'<span>{html.escape(name_str)}</span>'
+            f'<span class="donut-legend-pct">{pct:.1f}%</span>'
+            f"</div>"
+        )
+
+        start_angle = end_angle
+
+    svg = (
+        f'<svg width="260" height="260" viewBox="0 0 260 260">'
+        f'{"".join(segments)}'
+        f'<text x="130" y="126" text-anchor="middle" '
+        f'fill="var(--text)" font-size="1.1rem" font-weight="700" '
+        f'font-family="Cascadia Code, Consolas, monospace">'
+        f'{total:,.0f}</text>'
+        f'<text x="130" y="142" text-anchor="middle" '
+        f'fill="var(--muted)" font-size="0.65rem" '
+        f'font-family="Cascadia Code, Consolas, monospace">pJ</text>'
+        f'</svg>'
+    )
+
+    return (
+        f'<div class="donut-section">'
+        f'<div class="donut-chart-container">{svg}</div>'
+        f'<div class="donut-legend">{"".join(legend_items)}</div>'
+        f"</div>"
+    )
 
 
-def build_html(data: dict, title: str, functions: list[dict], total_all: float) -> str:
+def _build_footnote(arch: str) -> str:
+    """Return architecture-appropriate footnote HTML."""
+    arch_lower = arch.lower()
+
+    if "x86" in arch_lower or "intel" in arch_lower or "amd" in arch_lower:
+        return (
+            '<div class="footnote">'
+            "<strong>Energy Model:</strong> Intel Skylake-X (14 nm++, 3.0 GHz, 1.0 V) &mdash; "
+            "values derived from:<br>"
+            "&bull; Intel 64 and IA-32 Architectures Optimization Reference Manual (248966-044)<br>"
+            "&bull; Intel Skylake Microarchitecture Software Optimization Guide<br>"
+            "&bull; Bircher &amp; John, <em>Complete System Power Estimation Using Processor "
+            "Performance Events</em>, IEEE TC 2012<br>"
+            "&bull; Tiwari et al., <em>Power analysis of embedded software</em>, IEEE TVLSI 1994<br>"
+            "<br>"
+            "<strong>Note:</strong> x86-64 instructions typically cost ~1.5-3x more than equivalent "
+            "ARM A55 instructions due to complex instruction decode and out-of-order execution overhead.<br>"
+            "<strong>Disclaimer:</strong> This is a <em>static</em> energy estimate. "
+            "Actual dynamic energy depends on cache behaviour, branch prediction, "
+            "operand switching activity, and workload-specific memory access patterns."
+            "</div>"
+        )
+
+    return (
+        '<div class="footnote">'
+        "<strong>Energy Model:</strong> ARM Cortex-A55 (7 nm, 1800 MHz, 0.8 V) &mdash; "
+        "values derived from:<br>"
+        "&bull; ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A, Rev 3)<br>"
+        "&bull; Pallister et al., <em>BEEBS: Open Benchmarks for Energy Measurements on "
+        "Embedded Platforms</em>, 2013<br>"
+        "&bull; Tiwari et al., <em>Power analysis of embedded software</em>, IEEE TVLSI 1994<br>"
+        "&bull; Abdelhadi &amp; Bhattacharyya, <em>Energy modeling for superscalar processors</em>, "
+        "ACM TECS 2016<br>"
+        "<br>"
+        "<strong>Disclaimer:</strong> This is a <em>static</em> energy estimate based on published "
+        "per-instruction data and compile-time block frequency analysis. Actual dynamic energy "
+        "depends on cache behaviour, branch prediction, operand switching activity, "
+        "and workload-specific memory access patterns."
+        "</div>"
+    )
+
+
+def _has_source_annotation(source_path: str | None, remarks_path: str | None) -> bool:
+    """Check if both source and remarks files are available."""
+    if not source_path or not remarks_path:
+        return False
+    return Path(source_path).exists() and Path(remarks_path).exists()
+
+
+def build_html(
+    data: dict,
+    title: str,
+    functions: list[dict],
+    total_all: float,
+    source_annotation_html: str = "",
+) -> str:
     arch = data.get("arch", "unknown")
     unit = data.get("unit", "pJ")
     now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -424,7 +1108,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
         sum(b.get("instructions", 0) for b in f.get("blocks", [])) for f in functions
     )
 
-    # ── Header badges ───────────────────────────────────────────────────────
+    # -- Header badges ---
     badges_html = (
         f'<span class="badge">Arch: {html.escape(arch)}</span>'
         f'<span class="badge">Unit: {html.escape(unit)}</span>'
@@ -432,7 +1116,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
         f'<span class="badge">Generated: {now_str}</span>'
     )
 
-    # ── Summary stat cards ──────────────────────────────────────────────────
+    # -- Summary stat cards ---
     stat_cards = f"""
     <div class="summary-grid">
       <div class="stat-card">
@@ -452,15 +1136,18 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
       </div>
       <div class="stat-card">
         <div class="label">Hottest Function</div>
-        <div class="value" style="font-size:1.1rem;word-break:break-all;">
-          {html.escape(functions[0]["name"]) if functions else "—"}
+        <div class="value" style="font-size:1.0rem;word-break:break-all;">
+          {html.escape(functions[0]["name"]) if functions else "---"}
         </div>
         <div class="unit">{fmt_pJ(max_energy)}</div>
       </div>
     </div>
     """
 
-    # ── Function summary table ───────────────────────────────────────────────
+    # -- Donut chart ---
+    donut_chart = _build_donut_chart(functions, total_all)
+
+    # -- Function summary table ---
     func_rows = []
     for idx, fn in enumerate(functions):
         name = fn.get("name", "?")
@@ -468,7 +1155,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
         pct = (energy / total_all * 100) if total_all > 0 else 0.0
         ratio = energy / max_energy if max_energy > 0 else 0.0
         color = energy_color(energy, max_energy)
-        cls = heat_class(ratio)
+        cls = heat_css_class(ratio)
         blk_n = len(fn.get("blocks", []))
 
         func_rows.append(f"""
@@ -483,16 +1170,16 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
         </tr>""")
 
     summary_table = f"""
-    <section class="panel">
-      <h2><span class="icon">⚡</span> Function Energy Summary</h2>
+    <section class="panel" id="sec-summary">
+      <h2>[A] Function Energy Summary <span class="hint">(click any column header to sort &mdash; click a function name to see its block breakdown in <a href="#sec-blocks" style="color:var(--accent);text-decoration:none;">[B]</a>)</span></h2>
       <table id="fn-table">
         <thead>
           <tr>
-            <th onclick="sortTable('fn-table',0,true)">#</th>
+            <th class="num" onclick="sortTable('fn-table',0,true)">#</th>
             <th onclick="sortTable('fn-table',1,false)">Function</th>
-            <th onclick="sortTable('fn-table',2,true)">Energy ({html.escape(unit)})</th>
-            <th onclick="sortTable('fn-table',3,true)">% Total</th>
-            <th onclick="sortTable('fn-table',4,true)">Blocks</th>
+            <th class="num" onclick="sortTable('fn-table',2,true)">Energy ({html.escape(unit)})</th>
+            <th class="num" onclick="sortTable('fn-table',3,true)">% Total</th>
+            <th class="num" onclick="sortTable('fn-table',4,true)">Blocks</th>
             <th>Bar</th>
             <th>Category</th>
           </tr>
@@ -504,7 +1191,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
     </section>
     """
 
-    # ── Per-function block breakdown ─────────────────────────────────────────
+    # -- Per-function block breakdown ---
     details_html_parts = []
     for fn in functions:
         fn_name = fn.get("name", "?")
@@ -537,7 +1224,7 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
               <td class="number">{bidx + 1}</td>
               <td class="name" data-sort="{html.escape(bname)}">{html.escape(bname)}</td>
               <td class="number" data-sort="{raw:.6f}">{raw:,.4f}</td>
-              <td class="number" data-sort="{freq:.6f}">{freq:.4f}×</td>
+              <td class="number" data-sort="{freq:.6f}">{freq:.4f}x</td>
               <td class="number" data-sort="{wt:.6f}">{wt:,.4f}</td>
               <td class="number" data-sort="{bpct:.4f}">{bpct:.2f}%</td>
               <td class="number">{ic}</td>
@@ -545,27 +1232,71 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
             </tr>""")
 
         tid = f"blk-{html.escape(fn_name, quote=True).replace(' ', '_')[:30]}-{id(fn)}"
+
+        # --- Opcode breakdown ---
+        ib = fn.get("instruction_breakdown", {})
+        if ib:
+            max_op_energy = max(op["total"] for op in ib.values()) if ib else 1.0
+            op_rows = []
+            for opcode, info in sorted(ib.items(), key=lambda x: x[1]["total"], reverse=True):
+                op_ratio = info["total"] / max_op_energy if max_op_energy > 0 else 0.0
+                op_color = energy_color(info["total"], max_op_energy)
+                op_rows.append(f"""
+            <tr>
+              <td class="opcode" data-sort="{html.escape(opcode)}"><code>{html.escape(opcode)}</code></td>
+              <td class="number">{info["count"]}</td>
+              <td class="number">{info["energy_per"]:.2f}</td>
+              <td class="number" data-sort="{info["total"]:.6f}">{info["total"]:.2f}</td>
+              <td class="bar-cell">{pct_bar_html(op_ratio, op_color)}</td>
+            </tr>""")
+            total_opcodes = len(ib)
+            opcode_section = f"""
+      <details class="opcode-detail">
+        <summary>
+          <span class="arrow">></span>
+          Instruction Breakdown &mdash; {total_opcodes} opcodes
+        </summary>
+        <div class="opcode-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Opcode</th>
+                <th class="num">Count</th>
+                <th class="num">Energy/Inst ({html.escape(unit)})</th>
+                <th class="num">Total ({html.escape(unit)})</th>
+                <th>Bar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {"".join(op_rows)}
+            </tbody>
+          </table>
+        </div>
+      </details>"""
+        else:
+            opcode_section = ""
+
         details_html_parts.append(f"""
       <details>
         <summary>
-          <span class="arrow">▶</span>
-          <code style="color:var(--accent);font-size:0.9rem;">{html.escape(fn_name)}</code>
-          &nbsp;—&nbsp;
+          <span class="arrow">></span>
+          <code style="color:var(--accent);font-size:0.85rem;">{html.escape(fn_name)}</code>
+          &nbsp;---&nbsp;
           <strong>{fn_energy:,.4f} {html.escape(unit)}</strong>
           &nbsp;&nbsp;{cat_badge}
-          &nbsp;&nbsp;<span style="color:var(--muted);font-size:0.82rem;">{len(blocks)} block(s)</span>
+          &nbsp;&nbsp;<span style="color:var(--muted);font-size:0.76rem;">{len(blocks)} block(s)</span>
         </summary>
         <div class="block-table">
           <table id="{tid}">
             <thead>
               <tr>
-                <th onclick="sortTable('{tid}',0,true)">#</th>
+                <th class="num" onclick="sortTable('{tid}',0,true)">#</th>
                 <th onclick="sortTable('{tid}',1,false)">Basic Block</th>
-                <th onclick="sortTable('{tid}',2,true)">Raw Energy ({html.escape(unit)})</th>
-                <th onclick="sortTable('{tid}',3,true)">Freq Scale</th>
-                <th onclick="sortTable('{tid}',4,true)">Weighted ({html.escape(unit)})</th>
-                <th onclick="sortTable('{tid}',5,true)">% of Func</th>
-                <th onclick="sortTable('{tid}',6,true)">Instructions</th>
+                <th class="num" onclick="sortTable('{tid}',2,true)">Raw ({html.escape(unit)})</th>
+                <th class="num" onclick="sortTable('{tid}',3,true)">Freq Scale</th>
+                <th class="num" onclick="sortTable('{tid}',4,true)">Weighted ({html.escape(unit)})</th>
+                <th class="num" onclick="sortTable('{tid}',5,true)">% of Func</th>
+                <th class="num" onclick="sortTable('{tid}',6,true)">Instrs</th>
                 <th>Bar</th>
               </tr>
             </thead>
@@ -574,35 +1305,31 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
             </tbody>
           </table>
         </div>
+        {opcode_section}
       </details>""")
 
     details_section = f"""
-    <section class="panel">
-      <h2><span class="icon">🔍</span> Per-Function Block Breakdown
-        <span style="color:var(--muted);font-size:0.78rem;font-weight:400;">
-          (click a row to expand)
-        </span>
+    <section class="panel" id="sec-blocks">
+      <h2>[B] Per-Function Block Breakdown
+        <span class="hint">(click a row to expand &mdash; overview in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; distribution in <a href="#sec-donut" style="color:var(--accent);text-decoration:none;">[C]</a> &mdash; source in <a href="#sec-source" style="color:var(--accent);text-decoration:none;">[D]</a>)</span>
       </h2>
       {"".join(details_html_parts)}
     </section>
     """
 
-    # ── Footnote / references ────────────────────────────────────────────────
-    footnote = """
-    <div class="footnote">
-      <strong>Energy Model:</strong> ARM Cortex-A55 (7 nm, 1800 MHz, 0.8 V) &mdash;
-      values derived from:<br>
-      &bull; ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A, Rev 3)<br>
-      &bull; Pallister et al., <em>BEEBS: Open Benchmarks for Energy Measurements on Embedded Platforms</em>, 2013<br>
-      &bull; Tiwari et al., <em>Power analysis of embedded software: A first step towards software power minimization</em>, IEEE TVLSI 1994<br>
-      &bull; Abdelhadi &amp; Bhattacharyya, <em>Energy modeling for superscalar processors</em>, ACM TECS 2016<br>
-      &bull; Kerrison &amp; Eder, <em>Energy modeling of software for a hardware multithreaded embedded microprocessor</em>, ACM TECS 2015<br>
-      <br>
-      <strong>Disclaimer:</strong> This is a <em>static</em> energy estimate based on published per-instruction
-      data and compile-time block frequency analysis.  Actual dynamic energy depends on cache behaviour,
-      branch prediction, operand switching activity, and workload-specific memory access patterns.
-    </div>
+    footnote = _build_footnote(arch)
+
+    # Build nav links based on whether source annotation is available
+    has_source = bool(source_annotation_html)
+    nav_links = """
+        Sections: <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
+        &middot; <a href="#sec-blocks" style="color:#6c8ff7;text-decoration:none;">[B] Blocks</a>
+        &middot; <a href="#sec-donut" style="color:#6c8ff7;text-decoration:none;">[C] Distribution</a>
     """
+    if has_source:
+        nav_links += """
+        &middot; <a href="#sec-source" style="color:#6c8ff7;text-decoration:none;">[D] Source</a>
+        """
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -614,17 +1341,29 @@ def build_html(data: dict, title: str, functions: list[dict], total_all: float) 
 </head>
 <body>
 <header>
-  <h1>⚡ {html.escape(title)}</h1>
-  <div class="sub">
-    Static energy estimation via LLVM EnergyEstimationPass (MachineFunctionPass)
+  <div class="head-left">
+    <h1>[E] {html.escape(title)}</h1>
+    <div class="sub">
+      Static energy estimation via LLVM EnergyEstimationPass (MachineFunctionPass)
+    </div>      <div style="margin-top:10px">{badges_html}</div>
+      <div style="margin-top:6px;color:#8892a4;font-size:0.72rem;">
+        {nav_links}
+      </div>
   </div>
-  <div style="margin-top:12px">{badges_html}</div>
+  <button id="themeBtn" class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+  </button>
 </header>
 
 <div class="container">
-  {stat_cards}
+  {stat_cards}    <section class="panel" id="sec-donut">
+      <h2>[C] Energy Distribution <span class="hint">(per-function breakdown in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; block details in <a href="#sec-blocks" style="color:var(--accent);text-decoration:none;">[B]</a>)</span></h2>
+      {donut_chart}
+  </section>
+
   {summary_table}
   {details_section}
+  {source_annotation_html}
   {footnote}
 </div>
 
@@ -677,6 +1416,18 @@ def main() -> None:
         action="store_true",
         help="Skip HTML generation; only print ASCII summary to stdout",
     )
+    parser.add_argument(
+        "--source",
+        default=None,
+        metavar="FILE",
+        help="Path to the original .c source file for line-level annotation",
+    )
+    parser.add_argument(
+        "--remarks",
+        default=None,
+        metavar="FILE",
+        help="Path to the -Rpass-analysis=energy remarks file for source mapping",
+    )
     args = parser.parse_args()
 
     data = load_results(args.results_json)
@@ -698,7 +1449,24 @@ def main() -> None:
     if args.no_html:
         return
 
-    html_content = build_html(data, args.title, functions, total_all)
+    # Build source annotation if requested
+    source_annotation_html = ""
+    if args.source and args.remarks:
+        remark_map = parse_remarks(args.remarks)
+        if remark_map:
+            source_annotation_html = build_source_annotation(
+                args.source, functions, remark_map
+            )
+            print(f"[visualize_energy] Source annotation: {args.source}",
+                  file=sys.stderr)
+        else:
+            print("[visualize_energy] WARNING: No remarks data parsed — "
+                  "source annotation will be empty.", file=sys.stderr)
+
+    html_content = build_html(
+        data, args.title, functions, total_all,
+        source_annotation_html=source_annotation_html,
+    )
     out_path = Path(args.output)
     out_path.write_text(html_content, encoding="utf-8")
 

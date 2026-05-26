@@ -39,9 +39,9 @@ EnergyModel::EnergyModel(StringRef Path) {
   }
 
   // Optional metadata fields
-  if (auto *A = Root->getString("arch"))
+  if (auto A = Root->getString("arch"))
     Arch = A->str();
-  if (auto *U = Root->getString("unit"))
+  if (auto U = Root->getString("unit"))
     Unit = U->str();
 
   // ── 4. Extract instructions map ───────────────────────────────────────────

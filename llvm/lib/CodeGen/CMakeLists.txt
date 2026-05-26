@@ -8,35 +8,29 @@ add_library(EnergyEstimationPass MODULE
 )
 
 target_include_directories(EnergyEstimationPass PRIVATE
-  ${CMAKE_SOURCE_DIR}/llvm/include
+  ${CMAKE_SOURCE_DIR}/include
   ${LLVM_INCLUDE_DIRS}
 )
 
-# Link against EnergyModel (static) and needed LLVM components
-llvm_map_components_to_libnames(ENERGY_PASS_LLVM_LIBS
-  Analysis
-  CodeGen
-  Core
-  MC
-  Remarks
-  Support
-  Target
-)
-
+# Only link against EnergyModel (static). DO NOT link LLVM libraries —
+# they are resolved at runtime from the host tool (opt/llc) and linking
+# them explicitly causes 'option registered more than once' errors.
 target_link_libraries(EnergyEstimationPass PRIVATE
   EnergyModel
-  ${ENERGY_PASS_LLVM_LIBS}
 )
 
 set_target_properties(EnergyEstimationPass PROPERTIES
   CXX_STANDARD 17
-  # On macOS / Linux, don't link against libllvm here — it's loaded at runtime
   LINKER_LANGUAGE CXX
 )
 
+# Allow unresolved symbols — they're provided by the host (opt/llc) at runtime
 if(APPLE)
-  # Allow undefined symbols — they'll be resolved from the host tool (opt/llc)
   set_target_properties(EnergyEstimationPass PROPERTIES
     LINK_FLAGS "-undefined dynamic_lookup"
+  )
+elseif(UNIX)
+  set_target_properties(EnergyEstimationPass PROPERTIES
+    LINK_FLAGS "-Wl,--allow-shlib-undefined"
   )
 endif()
