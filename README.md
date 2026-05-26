@@ -8,6 +8,27 @@ A compiler-integrated energy analysis tool built as an LLVM `MachineFunctionPass
 
 ## How It Works
 
+### Simple Pipeline (Python-based — works on any OS)
+
+```
+your_code.c
+    │  gcc/clang -O2 -S
+    ▼
+ test.s  (assembly)
+    │  simple_energy_analysis.py
+    │       ↕ lookup in JSON energy model
+    ▼
+ energy_results_raw.json
+    │  convert_results.py
+    ▼
+ energy_results.json
+    │  visualize_energy.py
+    ▼
+ energy_report.html  (dark-themed, sortable, heat-map bars)
+```
+
+### Full LLVM Pass (Linux/WSL only — requires LLVM 14+ dev libraries)
+
 ```
 your_code.c
     │  clang -O2 -target aarch64-linux-gnu -emit-llvm -c
@@ -35,7 +56,19 @@ Every machine instruction is looked up in a JSON energy model mapping opcode nam
 
 ---
 
-## Quick Start: Full LLVM Pass (Linux/WSL)
+## Quick Start
+
+### Windows (Git Bash) — No LLVM dev libraries needed
+
+```bash
+bash bin/run_simple.sh examples/simple_test.c                # run default test
+bash bin/run_simple.sh examples/matrix_multiply.c             # run specific test
+start output/energy_report.html                               # open report
+```
+
+> The script auto-detects whether `clang` or `gcc` is available and picks the right energy model (x86-64 or AArch64) based on the compiled assembly.
+
+### Linux / WSL — Full LLVM Pass
 
 ```bash
 bin/build.sh                        # build the compiled LLVM pass
@@ -45,7 +78,63 @@ bin/run.sh examples/simple_test.c   # run on a specific test file
 
 ---
 
+## Simple Pipeline (Windows / Git Bash)
+
+> **No LLVM development libraries needed.** Works on any system with a C compiler and Python 3.
+
+### Prerequisites
+
+- **A C compiler**: `gcc` or `clang`
+- **Python 3.8+**
+
+### Try it
+
+```bash
+bash bin/run_simple.sh examples/simple_test.c
+```
+
+This runs the full pipeline in one command:
+1. Compiles C to assembly (`gcc -O2 -S`)
+2. Auto-detects architecture (x86-64 or AArch64)
+3. Selects the matching energy model
+4. Parses assembly and looks up per-instruction energy costs
+5. Generates an interactive HTML report
+
+### One Step at a Time (for explaining the process)
+
+```bash
+# Step 1: Compile C to assembly
+gcc -O2 -g -S examples/simple_test.c -o output/test.s
+
+# Step 2: Analyze energy
+python scripts/simple_energy_analysis.py output/test.s llvm/energy-models/x86_64.json output/energy_results_raw.json
+
+# Step 3: Convert to standard format
+python scripts/convert_results.py output/energy_results_raw.json output/energy_results.json
+
+# Step 4: Generate HTML report
+python llvm/visualize_energy.py output/energy_results.json --output output/energy_report.html
+
+# Step 5: Open the report
+start output/energy_report.html
+```
+
+### Test Files
+
+| File | Functions | What It Exercises |
+|------|-----------|-------------------|
+| `examples/simple_test.c` | 15 | Integer ops, FP, sorting, recursion, matrix multiply |
+| `examples/fp_compute.c` | 5 | Floating-point: dot product, FDIV-heavy harmonic mean |
+| `examples/matrix_multiply.c` | 3 | Standard vs. optimized matrix multiply comparison |
+| `llvm/test/sample.c` | 14 | Full comprehensive test suite |
+
+> **Note:** The script auto-detects which compiler is available (`clang` preferred, `gcc` fallback) and selects the correct energy model based on the compiled assembly architecture.
+
+---
+
 ## Full LLVM Pass (Linux / WSL)
+
+> ⚠️ **Requires LLVM 14+ development libraries.** Not available on vanilla Windows.
 
 ### Prerequisites
 
@@ -140,9 +229,12 @@ The innermost loop of a 16×16×16 matrix multiply runs with a `FreqScale` of 40
 `llvm/visualize_energy.py` reads the JSON output and generates a self-contained HTML report. Pure Python 3, no pip installs needed.
 
 ```bash
-python3 llvm/visualize_energy.py results.json \
-        --output report.html \
-        --title "My Project — AArch64 Cortex-A55"
+# Linux / macOS
+python3 llvm/visualize_energy.py results.json --output report.html
+
+# Windows (Git Bash)
+python llvm/visualize_energy.py output/energy_results.json --output output/energy_report.html
+start output/energy_report.html    # open in browser
 ```
 
 The report includes:
@@ -179,10 +271,10 @@ The report includes:
 ├── validation.md                   cross-check against published literature
 ├── bin/
 │   ├── build.sh                    build the LLVM pass (Linux/WSL)
-│   ├── run.sh                      run the energy estimation pipeline
-│   ├── run_simple.bat              Windows quick-run script (no build)
-│   ├── run_simple.sh               Unix quick-run script (no build)
-│   └── run_energy.bat              redirect to simple pipeline (Windows)
+│   ├── run.sh                      run the full LLVM pass pipeline (Linux/WSL)
+│   ├── run_simple.bat              Windows CMD quick-run script (no build)
+│   ├── run_simple.sh               Git Bash / Linux quick-run script (auto-detects gcc/clang)
+│   └── run_energy.bat              redirect to simple pipeline (Windows CMD)
 │
 ├── llvm/                           # main LLVM pass source
 │   ├── CMakeLists.txt              outer CMake — find_package(LLVM)
