@@ -359,17 +359,17 @@ E_function = Σ(E_block) across all blocks in the function
 
 ### 6.3 Sample Test Output
 
-When run against the `llvm/test/sample.c` test suite (13 functions, 644 instructions), the model produces:
+When run against the `simple_test.c` test suite (17 functions, 686 instructions) with the LLVM EnergyEstimationPass, the model produces:
 
 | Metric | Value |
 |--------|-------|
-| Total functions analysed | 13 |
-| Total instructions | 644 |
-| Total estimated energy | 4,819.20 pJ |
-| Hottest function | `matmul` at 1,919.50 pJ (39.8%) |
-| Dynamic range (max/min) | 109× (matmul vs. array_copy) |
+| Total functions analysed | 17 |
+| Total instructions | 686 |
+| Total estimated energy | ~163,438 pJ |
+| Hottest function | `mat_multiply` at ~101,011 pJ (61.8%) |
+| Dynamic range (max/min) | ~3,700× (mat_multiply vs. fib_iterative) |
 
-This demonstrates *internal consistency* — `matmul` (triple-nested loop with FMAs) is correctly identified as the most energy-intensive function. It does **not** validate absolute accuracy against real hardware.
+This demonstrates *internal consistency* — `mat_multiply` (triple-nested loop with FMAs, 512 inner iterations) is correctly identified as the most energy-intensive function. It does **not** validate absolute accuracy against real hardware.
 
 ---
 

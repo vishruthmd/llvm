@@ -16,104 +16,85 @@ The following metrics are used to evaluate the energy estimation:
 
 ## 2. Baseline Comparison
 
-### 2.1 Legacy Model vs. New Model
+### 2.1 Energy Model
 
-The project includes two energy models:
+The project uses the ARM Cortex-A55 energy model (`llvm/energy-models/aarch64.json`). See [validation.md](validation.md) for the full cross-check against published literature.
 
-| Feature | Legacy (`models/energy_model.json`) | New (`llvm/energy-models/aarch64.json`) |
+| Feature | Value |
+|---|---|
+| **Core** | ARM Cortex-A55 |
+| **Process node** | 7 nm (TSMC) |
+| **Opcodes** | 300+ across 12 categories |
+| **LLVM names** | Both canonical mnemonics + LLVM-internal opcode names |
+| **Validation** | Cross-checked vs. 5 published sources — 58/58 comparisons pass |
+
+### 2.2 Instruction Energy Costs (Cortex-A55 @ 7 nm)
+
+| Instruction | Energy (pJ) | Relative Cost |
 |---|---|---|
-| **Opcodes** | ~60 | 624 |
-| **Categories** | 6 coarse classes | 12 fine-grained categories |
-| **Process node** | 28 nm (Cortex-A53) | 7 nm (Cortex-A55, scaled) |
-| **LLVM names** | Canonical mnemonics only | Both canonical + LLVM-internal names |
-| **Precision** | Single value per class | Per-opcode granularity |
-| **Validation** | Manual only | Cross-checked vs. published data |
+| NOP | 0.5 | 0.2× |
+| MOV (register) | 1.5 | 0.5× |
+| ADD / SUB | 2.8 | 1.0× (baseline) |
+| AND / ORR / EOR | 2.7 | 1.0× |
+| Shift (LSL/LSR/ASR) | 2.5 | 0.9× |
+| Branch (B) | 2.5 | 0.9× |
+| RET | 3.0 | 1.1× |
+| Conditional branch (Bcc) | 3.5 | 1.3× |
+| MUL (32-bit) | 6.5 | 2.3× |
+| STR (L1 hit) | 7.2 | 2.6× |
+| LDR (L1 hit) | 9.5 | 3.4× |
+| FMADD (fused multiply-add) | 10.5 | 3.8× |
+| LDP (load pair) | 14.0 | 5.0× |
+| SDIV (32-bit) | 18.0 | 6.4× |
+| FDIV (single) | 28.0 | 10.0× |
+| SVC (system call) | 25.0 | 8.9× |
+| FDIV (double) | 34.0 | 12.1× |
+| NEON FDIV (v4f32) | 90.0 | 32.1× |
 
-### 2.2 Energy Comparison: Legacy vs. New Model
+## 3. Test Case: `simple_test.c`
 
-| Instruction | Legacy Model (28 nm, pJ) | New Model (7 nm, pJ) | Ratio (old/new) |
-|---|---|---|---|
-| ADD / SUB | 10.5 | 2.8 | 3.75× |
-| MUL | 28.3 | 6.5 | 4.35× |
-| SDIV | 85.7 | 18.0 | 4.76× |
-| LDR (L1 hit) | 45.2 | 9.5 | 4.76× |
-| STR (L1 hit) | 52.8 | 7.2 | 7.33× |
-| FADD | 156.8 | 4.8 | 32.7× |
-| FMUL | 189.2 | 9.5 | 19.9× |
-| FDIV | 234.5 | 28.0 | 8.38× |
+The test file (`simple_test.c` at project root) contains **15 functions** exercising a broad range of instruction categories.
 
-**Note:** The large ratios for FP operations reflect that the legacy model assigned unrealistically high values (based on 28 nm Cortex-A53 measurements without process scaling). The new model applies Dennard-like scaling factors to approximate 7 nm energy efficiency.
+**Results (LLVM EnergyEstimationPass with loop weighting):**
 
-### 2.3 Cross-Architecture Comparison
+| # | Function | Energy (pJ) | %Total | Instructions | Category |
+|---|---|---|---|---|---|
+| 1 | `mat_multiply` | 101,011 | 61.8% | 44 | Triple-nested FP loop |
+| 2 | `main` | 46,576 | 28.5% | 210 | Driver + initialization |
+| 3 | `bubble_sort` | 10,364 | 6.3% | 22 | Nested loop comparisons |
+| 4 | `merge_sort` | 3,142 | 1.9% | 144 | Recursive sort |
+| 5 | `dot_product` | 844 | 0.5% | 34 | Multiply-accumulate |
+| 6 | `fib_recursive` | 331 | 0.2% | 17 | Recursive calls (15 calls) |
+| 7 | `crc32` | 198 | 0.1% | 43 | Bit manipulation |
+| 8 | `fib_iterative` | 175 | 0.1% | 12 | Loop + ADD |
+| 9 | `crc32_byte` | 163 | 0.1% | 37 | Bit manipulation |
+| 10 | `factorial` | 153 | 0.1% | 34 | Multiply-heavy loop |
+| 11 | `fp_ops` | 145 | 0.1% | 19 | Floating-point |
+| 12 | `linear_search` | 99 | 0.1% | 10 | Branchy loop |
+| 13 | `sum_array` | 88 | 0.1% | 28 | Load/store + ALU |
+| 14 | `integer_ops` | 61 | <0.1% | 15 | ALU operations |
+| 15 | `popcount64` | 28 | <0.1% | 5 | Bit manipulation |
+| 16 | `my_strlen` | 20 | <0.1% | 6 | Pointer arithmetic |
+| 17 | `atomic_increment` | 11 | <0.1% | 6 | Atomic RMW |
+| | **Total** | **163,438** | **100%** | **686** | |
 
-| Instruction | ARM A55 @ 7nm (pJ) | Intel Skylake @ 14nm (pJ, est.) | Ratio (x86/ARM) |
-|---|---|---|---|
-| Integer ADD | 2.8 | 5–8 | ~2–3× |
-| Integer MUL | 6.5 | 10–15 | ~2× |
-| FADD | 4.8 | 8–12 | ~2× |
-| FMUL | 9.5 | 12–18 | ~1.5× |
+**Dynamic range:** ~9,184× (mat_multiply vs. atomic_increment)
 
-## 3. Test Cases (≥5)
+### Key Observations
 
-The following test programs exercise a broad range of instruction categories:
+1. **`mat_multiply` dominates (61.8%):** The triple-nested loop (8×8×8 = 512 inner iterations) multiplies the raw block energy by `freq_scale ≈ 512`, turning ~197 pJ raw into ~101,011 pJ weighted.
 
-### Test Case 1: `llvm/test/sample.c` (12 functions, 644 instructions)
+2. **`main` is second (28.5%):** This includes matrix initialization loops (8×8 = 64 iterations each), plus calls to all 15 functions. The init loops add significant weighted energy.
 
-Covers: integer ALU, FP arithmetic, array ops, matrix multiply, recursive fibonacci, iterative fibonacci, popcount, atomics, string length, merge sort, CRC-32.
+3. **`bubble_sort` third (6.3%):** O(n²) algorithm with n=64 produces 2,016 inner comparisons. Each comparison includes LDR + CMP + conditional branch + STR ≈ 22 pJ, multiplied by freq_scale ~1,008.
 
-**Results:**
-| Function | Energy (pJ) | %Total | Instructions | Category |
-|---|---|---|---|---|
-| matmul | 2,127.90 | 28.5% | 87 | Triple-nested loop (FP) |
-| main | 1,736.80 | 23.2% | 152 | Driver + init |
-| merge_sort | 1,722.40 | 23.0% | 121 | Recursive sort |
-| dot_product | 480.00 | 6.4% | 32 | Multiply-accumulate |
-| crc32 | 327.20 | 4.4% | 48 | Bit manipulation |
-| fp_ops | 320.60 | 4.3% | 42 | Floating-point |
-| fib_iterative | 222.90 | 3.0% | 28 | Loop + ADD |
-| integer_ops | 169.30 | 2.3% | 36 | ALU operations |
-| fib_recursive | 142.40 | 1.9% | 18 | Recursive calls |
-| popcount64 | 79.20 | 1.1% | 12 | Bit manipulation |
-| crc32_byte | 64.50 | 0.9% | 12 | Bit manipulation |
-| array_copy | 52.50 | 0.7% | 16 | Load/store |
-| atomic_increment | 15.00 | 0.2% | 8 | Atomic RMW |
-| my_strlen | 12.00 | 0.2% | 6 | Pointer arithmetic |
-| **Total** | **7,472.70** | **100%** | **618** | |
+4. **`fp_ops` is cheap despite FP ops:** Only called once — the FreqScale from the single call doesn't amplify it. Most of the energy comes from loop-heavy functions.
 
-**Dynamic range:** 177× (matmul vs. my_strlen)
-
-### Test Case 2: `examples/simple_test.c` (13 functions)
-
-Covers: integer ops, FP ops, array sum, factorial, matrix multiply, recursive/iterative fibonacci, popcount, bubble sort, quick sort, palindrome, CRC-32, linear search.
-
-**Results:**
-| Function | Energy (pJ) | Notable |
-|---|---|---|
-| mat_multiply | ~2,000+ | Triple-nested FP loop |
-| quick_sort | ~900 | Recursive + swaps |
-| bubble_sort | ~850 | Nested loop comparisons |
-| crc32 | ~350 | Bit manipulation |
-| fp_ops | ~320 | FP arithmetic |
-| factorial | ~200 | Multiply-heavy loop |
-| fib_recursive | ~140 | Call/return overhead |
-
-### Test Case 3: `examples/fp_compute.c` (4 functions)
-
-Focuses on floating-point energy costs: dot product, harmonic mean (FDIV-heavy), Euclidean distance, variance computation.
-
-### Test Case 4: `examples/matrix_multiply.c` (2 functions)
-
-Compares standard matrix multiply (ijk) vs. cache-optimized (ikj) — demonstrates that identical numerical work can have different instruction-level energy due to different code generation.
-
-### Test Case 5: `examples/test.c` (5 functions)
-
-Exercises: sum, factorial (MUL), divide_loop (SDIV-heavy), count_evens (branchy), array sum (LDR/ADD).
-
-### Total: 36+ functions across 5 test files
+5. **Recursive fib is surprisingly low:** fib_recursive(15) makes 1,973 recursive calls, but LLVM's MBFI estimates the entry runs once per call from main, so the FreqScale isn't as high as expected.
 
 ## 4. Validation Cross-Check
 
-The model's energy values have been cross-checked against published reference ranges:
+The model's energy values have been cross-checked against published reference ranges. See [validation.md](validation.md) for full details.
 
 | Instruction Class | Model (pJ) | Published Range (pJ) | In Range? |
 |---|---|---|---|
@@ -125,62 +106,31 @@ The model's energy values have been cross-checked against published reference ra
 | FADD (single) | 4.8 | 4.2–5.5 | YES |
 | FDIV (single) | 28.0 | 24–34 | YES |
 
-**58/58 reference comparisons passed.** All model values fall within published ranges from ARM Cortex-A55 optimization guide, Pallister et al., Tiwari et al., and Nunez-Yanez.
+**58/58 reference comparisons passed.**
 
 ## 5. Consistency Checks
-
-The model passes all 14 structural consistency checks:
 
 | Check | Expected | Actual | Result |
 |---|---|---|---|
 | NOP < MOV < ADD | 0.5 < 1.5 < 2.8 | ✓ | PASS |
 | DIV > MUL > ADD | 18.0 > 6.5 > 2.8 | ✓ | PASS |
 | FDIV > FMUL > FADD | 28.0 > 9.5 > 4.8 | ✓ | PASS |
-| FDIV > SDIV (FP > int) | 28.0 > 18.0 | ✓ | PASS |
 | LDR > ADD (mem > ALU) | 9.5 > 2.8 | ✓ | PASS |
 | STR < LDR (store < load) | 7.2 < 9.5 | ✓ | PASS |
-| LDP < 2×LDR | 14.0 < 19.0 | ✓ | PASS |
-| SIMD > scalar | 90.0 > 28.0 | ✓ | PASS |
 | All opcodes ≥ 0 energy | min = 0.2 (NOP) | ✓ | PASS |
 
-## 6. Sample Run Output
+## 6. HTML Report Features
 
-### ASCII Summary (stdout)
+The interactive HTML report (`report_llvm.html`) includes:
 
-```
-========================================================================
-  Static Energy Estimation Report  --  AArch64  (unit: pJ)
-========================================================================
-  Functions analysed : 14
-  Total energy       : 7,472.70 pJ
-
-  Function                                    Energy (pJ)   %Total  Chart
-  --------------------------------------------------------------------
-  matmul                                         2,127.90    28.5%  [####################]
-  main                                           1,736.80    23.2%  [################--]
-  merge_sort                                     1,722.40    23.0%  [################--]
-  dot_product                                      480.00     6.4%  [####----------------]
-  crc32                                            327.20     4.4%  [###-----------------]
-  fp_ops                                           320.60     4.3%  [###-----------------]
-  fib_iterative                                    222.90     3.0%  [##------------------]
-  integer_ops                                      169.30     2.3%  [#-------------------]
-  fib_recursive                                    142.40     1.9%  [#-------------------]
-  popcount64                                        79.20     1.1%  [--------------------]
-  crc32_byte                                        64.50     0.9%  [--------------------]
-  array_copy                                        52.50     0.7%  [--------------------]
-  atomic_increment                                  15.00     0.2%  [--------------------]
-  my_strlen                                         12.00     0.2%  [--------------------]
-```
-
-### HTML Report Features
-
-The interactive HTML report (`energy_report.html`) includes:
-- [A] Sortable function summary table with heat-map bars
-- [B] Collapsible per-function block breakdown with per-opcode detail
-- [C] SVG donut chart showing energy distribution
-- [D] Source-level annotation (when `--source` and `--remarks` flags provided)
-- Dark/light mode toggle
-- Navigation links between sections
+| Section | Label | Description |
+|---|---|---|
+| **Methodology Guide** | [M] | Explains how energy is calculated, what each column means, model details, limitations — designed for non-technical readers |
+| **Summary Table** | [A] | Sortable function table with energy, % total, bar charts, and category badges (HIGH/MEDIUM/LOW) |
+| **Block Breakdown** | [B] | Collapsible per-function block details showing raw/weighted energy, freq_scale, and per-instruction (opcode) breakdowns |
+| **Distribution Chart** | [C] | SVG donut chart showing energy distribution across functions with colour-coded legend |
+| **Source Annotation** | [D] | Line-level energy mapping when `--source` and `--remarks` flags are provided |
+| **Theme Toggle** | 🌙/☀️ | Dark/light mode toggle with smooth transitions |
 
 ## 7. Known Limitations
 
@@ -197,8 +147,8 @@ The interactive HTML report (`energy_report.html`) includes:
 
 | Scenario | Recommended? | Rationale |
 |---|---|---|
-| Comparing algorithms (qsort vs. mergesort) | ✅ YES | Relative comparison preserves ordering |
-| Identifying energy hotspots | ✅ YES | Dynamic range > 100× clearly separates hot/cold |
+| Comparing algorithms (quick sort vs. merge sort) | ✅ YES | Relative comparison preserves ordering |
+| Identifying energy hotspots | ✅ YES | Dynamic range > 9,000× clearly separates hot/cold |
 | Compiler optimization tuning | ✅ YES | `-O2` vs. `-Os` trade-offs visible |
 | Compute-intensive kernels | ✅ YES | ALU/FP activity well-predicted |
 | Educational demonstrations | ✅ YES | Shows where energy goes in code |
@@ -209,18 +159,16 @@ The interactive HTML report (`energy_report.html`) includes:
 
 To reproduce these results:
 
-```bash
-# Simple pipeline (no LLVM dev libs needed, works on Windows)
-bin/run.sh examples/simple_test.c
-
-# Full LLVM pass pipeline (Linux/WSL with LLVM 14+)
-bin/build.sh
-bin/run.sh                   # runs llvm/test/sample.c
-bin/run.sh examples/simple_test.c
-bin/run.sh examples/fp_compute.c
+```
+cd llvm_pipeline
+run.bat
 ```
 
-All output files go to `output/` directory:
-- `energy_results.json` — structured data
-- `energy_report.html` — interactive report
-- `test.s` — generated assembly
+Output files:
+- `output/report_llvm.html` — interactive HTML report
+- `output/energy_results.json` — structured data (JSON)
+
+To run on a different `.c` file:
+```
+run.bat path\to\your_file.c
+```

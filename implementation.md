@@ -15,11 +15,12 @@ llvm/
 │       ├── EnergyEstimation.cpp            # MachineFunctionPass (417 lines)
 │       └── CMakeLists.txt                  # Builds EnergyEstimationPass.so
 ├── energy-models/
-│   └── aarch64.json                        # ARM Cortex-A55 model (624 opcodes)
+│   └── aarch64.json                        # ARM Cortex-A55 model (300+ opcodes)
 ├── visualize_energy.py                     # HTML + ASCII report generator
-└── test/
-    ├── sample.c                            # 12-function comprehensive test
-    └── run_test.sh                         # End-to-end pipeline script
+└── (build output goes to ../build/)
+
+Test file: simple_test.c (project root)
+Pipeline:  llvm_pipeline/run.bat
 ```
 
 ## Core Classes

@@ -64,6 +64,7 @@
 
 #include <cassert>
 #include <cstdio>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,11 +112,19 @@ struct BlockResult {
   unsigned    InstrCount;     ///< Number of real (non-debug, non-implicit) instrs
 };
 
+/// Per-opcode data for instruction breakdown.
+struct OpcodeInfo {
+  unsigned Count;       // number of occurrences
+  double   TotalEnergy; // sum of energy for this opcode
+  double   EnergyPer;   // energy per instruction
+};
+
 /// Per-function energy data, containing all block results.
 struct FunctionResult {
-  std::string             Name;        ///< MachineFunction name
-  double                  TotalEnergy; ///< Sum of WeightedEnergy over all blocks
-  std::vector<BlockResult> Blocks;
+  std::string                    Name;        ///< MachineFunction name
+  double                         TotalEnergy; ///< Sum of WeightedEnergy over all blocks
+  std::vector<BlockResult>       Blocks;
+  std::map<std::string, OpcodeInfo> OpcodeBreakdown; // per-opcode stats
 };
 
 //===----------------------------------------------------------------------===//
@@ -223,6 +232,12 @@ public:
         const double InstEnergy = Model->getEnergy(OpName);
         RawBlockEnergy += InstEnergy;
         ++InstrCount;
+
+        // Accumulate per-opcode breakdown
+        OpcodeInfo &OI = FuncResult.OpcodeBreakdown[std::string(OpName)];
+        OI.Count++;
+        OI.TotalEnergy += InstEnergy;
+        OI.EnergyPer = (OI.Count > 0) ? OI.TotalEnergy / OI.Count : 0.0;
 
         LLVM_DEBUG(dbgs() << "  [" << MBB.getName() << "] " << OpName
                           << "  e=" << InstEnergy << " pJ\n");
@@ -381,7 +396,28 @@ private:
         OS << "\n";
       }
 
-      OS << "      ]\n";   // close "blocks"
+      OS << "      ]";   // close "blocks"
+
+      // ── Write instruction_breakdown per function ────────────────────
+      if (!FR.OpcodeBreakdown.empty()) {
+        OS << ",\n";
+        OS << "      \"instruction_breakdown\": {\n";
+        size_t oi = 0;
+        for (const auto &Entry : FR.OpcodeBreakdown) {
+          const std::string &OpName = Entry.first;
+          const OpcodeInfo &OI = Entry.second;
+          OS << "        \"" << OpName << "\": {\n";
+          OS << "          \"count\": " << OI.Count << ",\n";
+          OS << "          \"energy_per\": " << fmtDouble(OI.EnergyPer) << ",\n";
+          OS << "          \"total\": " << fmtDouble(OI.TotalEnergy) << "\n";
+          OS << "        }";
+          if (oi + 1 < FR.OpcodeBreakdown.size()) OS << ",";
+          OS << "\n";
+          ++oi;
+        }
+        OS << "      }\n";
+      }
+
       OS << "    }";
       if (fi + 1 < fn) OS << ",";
       OS << "\n";

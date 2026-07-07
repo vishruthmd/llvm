@@ -124,6 +124,16 @@ LLVM's `TargetInstrInfo::getName()` returns the LLVM-internal opcode name (e.g.,
 | **Dynamic voltage/frequency scaling** | Models power management states | Moderate — requires OS interface data |
 | **Multi-architecture support** | Broadens applicability | Moderate — need models for x86, RISC-V |
 
+## How to Run
+
+```
+cd llvm_pipeline
+run.bat
+```
+
+This runs the full pipeline: compile → bitcode → MIR → EnergyEstimationPass → HTML report.
+See [README.md](README.md) for details.
+
 ## Architecture Diagram
 
 ```

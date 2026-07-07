@@ -1098,6 +1098,7 @@ def build_html(
     functions: list[dict],
     total_all: float,
     source_annotation_html: str = "",
+    model_meta: dict | None = None,
 ) -> str:
     arch = data.get("arch", "unknown")
     unit = data.get("unit", "pJ")
@@ -1117,6 +1118,9 @@ def build_html(
     )
 
     # -- Summary stat cards ---
+    # ── Read model metadata from JSON to display in methodology ────────
+    raw_data = model_meta if model_meta else data
+
     stat_cards = f"""
     <div class="summary-grid">
       <div class="stat-card">
@@ -1142,6 +1146,156 @@ def build_html(
         <div class="unit">{fmt_pJ(max_energy)}</div>
       </div>
     </div>
+    """
+
+    # ── Methodology / How This Works section ─────────────────────────────
+    # Extract model details from data if available
+    core = raw_data.get("core", "ARM Cortex-A55")
+    process = raw_data.get("process", "7nm")
+    freq = raw_data.get("frequency_mhz", 1800)
+    voltage = raw_data.get("voltage_v", 0.8)
+    refs = raw_data.get("reference", [])
+    notes = raw_data.get("notes", [])
+    instr_count = len(raw_data.get('instructions', {}))
+
+    # Explain what each column means
+    methodology_html = f"""
+    <section class="panel" id="sec-methodology">
+      <h2>[M] How Energy Estimation Works &mdash; Methodology</h2>
+      <div style="padding:18px 20px;font-size:0.82rem;line-height:1.7;">
+
+        <h3 style="color:var(--accent);margin-bottom:8px;">① The Energy Model</h3>
+        <table style="width:auto;font-size:0.82rem;">
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Target Core:</td><td><strong>{html.escape(core)}</strong> (ARM big.LITTLE efficiency core)</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Manufacturing Process:</td><td>{html.escape(process)}</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Clock Frequency:</td><td>{freq} MHz</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Operating Voltage:</td><td>{voltage} V</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Energy Unit:</td><td><strong>{html.escape(unit)}</strong> (picojoule = 10⁻¹² joule &mdash; one trillionth of a joule)</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:var(--muted);">Model Size:</td><td>{instr_count} opcodes with per-instruction energy costs</td></tr>
+        </table>
+        <p style="margin-top:10px;color:var(--muted);">
+          Think of the energy model as a <strong>price list</strong> for each instruction.
+          Just like a grocery receipt where each item has a price, every CPU instruction
+          has an estimated energy cost. <code>ADD</code> costs 2.8 pJ, <code>LDR</code>
+          (loading from memory) costs 9.5 pJ, and <code>FDIV</code> (floating-point divide)
+          costs 28 pJ &mdash; ten times more than an ADD.
+        </p>
+        <details style="margin-top:8px;">
+          <summary style="cursor:pointer;color:var(--accent);font-size:0.78rem;">
+            &#9654; References &mdash; where these values come from ({len(refs)} sources)
+          </summary>
+          <ul style="margin:8px 0 0 20px;font-size:0.76rem;color:var(--muted);">
+            {"".join(f'<li>{html.escape(r)}</li>' for r in refs)}
+          </ul>
+        </details>
+
+        <h3 style="color:var(--accent);margin:18px 0 8px;">② The Calculation Pipeline</h3>
+        <p>The estimation happens in three nested levels:</p>
+
+        <div style="background:var(--card2);border-radius:6px;padding:14px;margin:8px 0;">
+          <p style="font-weight:600;margin-bottom:4px;">Step 1: Per Instruction</p>
+          <p style="font-size:0.76rem;color:var(--muted);margin:0;">
+            The LLVM pass walks every machine instruction in your compiled code.
+            For each real instruction (ignoring debug info and pseudo-ops), it looks up
+            the instruction name (e.g. <code>ADDWri</code>) in the energy model and gets
+            its cost in pJ.
+          </p>
+          <div style="background:rgba(108,143,247,0.1);border-radius:4px;padding:8px 12px;margin:6px 0 0;font-family:monospace;font-size:0.76rem;">
+            <code>instEnergy = model.lookup("ADDWri") &rarr; 2.8 pJ</code>
+          </div>
+        </div>
+
+        <div style="background:var(--card2);border-radius:6px;padding:14px;margin:8px 0;">
+          <p style="font-weight:600;margin-bottom:4px;">Step 2: Per Block (Raw Energy)</p>
+          <p style="font-size:0.76rem;color:var(--muted);margin:0;">
+            A <strong>basic block</strong> is a straight-line sequence of instructions with no
+            branches in or out. The raw energy of a block is simply the sum of all its
+            instruction energies, as if the block runs once.
+          </p>
+          <div style="background:rgba(108,143,247,0.1);border-radius:4px;padding:8px 12px;margin:6px 0 0;font-family:monospace;font-size:0.76rem;">
+            <code>rawBlockEnergy = SUM(instEnergy for each instruction in the block)</code>
+          </div>
+        </div>
+
+        <div style="background:var(--card2);border-radius:6px;padding:14px;margin:8px 0;">
+          <p style="font-weight:600;margin-bottom:4px;">Step 3: Loop Weighting (Freq Scale)</p>
+          <p style="font-size:0.76rem;color:var(--muted);margin:0;">
+            This is the most important step. LLVM's <code>MachineBlockFrequencyInfo</code>
+            estimates <strong>how many times each block actually runs</strong> during execution.
+            A block inside a loop that runs 100 times gets <strong>FreqScale = 100</strong>.
+            The weighted energy = raw energy &times; FreqScale.
+          </p>
+          <div style="background:rgba(108,143,247,0.1);border-radius:4px;padding:8px 12px;margin:6px 0 0;font-family:monospace;font-size:0.76rem;">
+            <code>weightedBlockEnergy = rawBlockEnergy &times; (blockFreq / entryFreq)</code>
+          </div>
+        </div>
+
+        <div style="background:var(--card2);border-radius:6px;padding:14px;margin:8px 0;">
+          <p style="font-weight:600;margin-bottom:4px;">Step 4: Per Function (Total)</p>
+          <p style="font-size:0.76rem;color:var(--muted);margin:0;">
+            The total energy for a function is the sum of all its weighted block energies.
+          </p>
+          <div style="background:rgba(108,143,247,0.1);border-radius:4px;padding:8px 12px;margin:6px 0 0;font-family:monospace;font-size:0.76rem;">
+            <code>functionEnergy = SUM(weightedBlockEnergy for each block in the function)</code>
+          </div>
+        </div>
+
+        <div style="background:var(--card2);border-radius:6px;padding:14px;margin:8px 0;">
+          <p style="font-weight:600;margin-bottom:4px;">Step 5: Opcode Breakdown (per function)</p>
+          <p style="font-size:0.76rem;color:var(--muted);margin:0;">
+            Inside each function, the pass also tracks how many times each opcode appears.
+            Expand <strong>"Instruction Breakdown"</strong> inside any function to see which
+            specific instructions consume the most energy.
+          </p>
+        </div>
+
+        <h3 style="color:var(--accent);margin:18px 0 8px;">③ Understanding the Table Columns</h3>
+        <p style="font-size:0.78rem;color:var(--muted);margin-bottom:8px;">Here's what each column in the block breakdown means:</p>
+        <table style="font-size:0.78rem;border-collapse:collapse;">
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">Raw Energy</td><td style="color:var(--muted);">What the block would cost if it ran <strong>exactly once</strong>. No loop multiplication.</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">Freq Scale</td><td style="color:var(--muted);">The <strong>loop multiplier</strong>. A value of 100 means this block runs ~100 times per function call. This is the key number that tells you where loops are hot.</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">Weighted Energy</td><td style="color:var(--muted);"><strong>Raw Energy &times; Freq Scale</strong> &mdash; the real estimated cost accounting for loops. <em>This is the number that matters.</em></td></tr>
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">% of Func</td><td style="color:var(--muted);">This block's percentage of the total function energy. Helps identify which block is the hot spot.</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">Instrs</td><td style="color:var(--muted);">Number of real machine instructions in this block (debug/pseudo instructions excluded).</td></tr>
+          <tr><td style="padding:4px 14px 4px 0;font-weight:600;">Bar</td><td style="color:var(--muted);">Visual heat map &mdash; longer bars = more energy. <span style="color:#f87171;">Red</span> = hot, <span style="color:#fbbf24;">yellow</span> = warm, <span style="color:#34d399;">green</span> = cool.</td></tr>
+        </table>
+
+        <h3 style="color:var(--accent);margin:18px 0 8px;">④ Understanding the Category Badges</h3>
+        <table style="font-size:0.78rem;border-collapse:collapse;">
+          <tr>
+            <td style="padding:4px 14px 4px 0;"><span class="badge badge-hot">HIGH</span></td>
+            <td style="color:var(--muted);">Top 25% of energy consumption &mdash; <strong>optimisation priority</strong></td>
+          </tr>
+          <tr>
+            <td style="padding:4px 14px 4px 0;"><span class="badge badge-warm">MEDIUM</span></td>
+            <td style="color:var(--muted);">Middle 50% &mdash; worth checking but not critical</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 14px 4px 0;"><span class="badge badge-cool">LOW</span></td>
+            <td style="color:var(--muted);">Bottom 25% &mdash; minor contributor, usually not worth optimising</td>
+          </tr>
+        </table>
+
+        <h3 style="color:var(--accent);margin:18px 0 8px;">⑤ Limitations &amp; Caveats</h3>
+        <ul style="margin:0 0 0 20px;font-size:0.76rem;color:var(--muted);">
+          <li><strong>Cache misses are NOT modelled.</strong> We assume every load hits L1 cache. In reality, a cache miss costs 3-25x more energy. This is the #1 source of underestimation.</li>
+          <li><strong>Branch mispredictions are NOT modelled.</strong> A mispredicted branch costs ~10-15x the energy of a correct one.</li>
+          <li><strong>Pipeline stalls are NOT modelled.</strong> In reality, multiple instructions can overlap execution.</li>
+          <li><strong>Frequency/voltage scaling (DVFS) is not accounted for.</strong> The model assumes constant 1800 MHz / 0.8 V.</li>
+          <li><strong>DRAM, I/O, and peripheral energy is excluded.</strong> Only the CPU core pipeline is modelled.</li>
+          <li>The model is <strong>static</strong>: it estimates compile-time known costs, not runtime behaviour with real inputs.</li>
+        </ul>
+
+        <h3 style="color:var(--accent);margin:18px 0 8px;">⑥ Why Different Runs Give Different Results</h3>
+        <ul style="margin:0 0 0 20px;font-size:0.76rem;color:var(--muted);">
+          <li><strong>Different .c files</strong>: A matrix multiply function consumes ~100x more energy than a simple string length function.</li>
+          <li><strong>Different inputs</strong>: Larger arrays = more loop iterations = higher energy. N=64 vs N=1024 changes energy by 16x.</li>
+          <li><strong>Compiler flags</strong>: <code>-O2</code> vs <code>-Os</code> changes instruction selection, which changes energy.</li>
+          <li><strong>Different architectures</strong>: The model targets ARM Cortex-A55. Other processors (x86, RISC-V, newer ARM cores) have different per-instruction costs.</li>
+        </ul>
+
+      </div>
+    </section>
     """
 
     # -- Donut chart ---
@@ -1322,7 +1476,8 @@ def build_html(
     # Build nav links based on whether source annotation is available
     has_source = bool(source_annotation_html)
     nav_links = """
-        Sections: <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
+        Sections: <a href="#sec-methodology" style="color:#6c8ff7;text-decoration:none;">[M] Guide</a>
+        &middot; <a href="#sec-summary" style="color:#6c8ff7;text-decoration:none;">[A] Summary</a>
         &middot; <a href="#sec-blocks" style="color:#6c8ff7;text-decoration:none;">[B] Blocks</a>
         &middot; <a href="#sec-donut" style="color:#6c8ff7;text-decoration:none;">[C] Distribution</a>
     """
@@ -1356,7 +1511,8 @@ def build_html(
 </header>
 
 <div class="container">
-  {stat_cards}    <section class="panel" id="sec-donut">
+  {stat_cards}
+  <section class="panel" id="sec-donut">
       <h2>[C] Energy Distribution <span class="hint">(per-function breakdown in <a href="#sec-summary" style="color:var(--accent);text-decoration:none;">[A]</a> &mdash; block details in <a href="#sec-blocks" style="color:var(--accent);text-decoration:none;">[B]</a>)</span></h2>
       {donut_chart}
   </section>
@@ -1364,6 +1520,7 @@ def build_html(
   {summary_table}
   {details_section}
   {source_annotation_html}
+  {methodology_html}
   {footnote}
 </div>
 
@@ -1428,6 +1585,12 @@ def main() -> None:
         metavar="FILE",
         help="Path to the -Rpass-analysis=energy remarks file for source mapping",
     )
+    parser.add_argument(
+        "--model",
+        default=None,
+        metavar="FILE",
+        help="Path to the energy model JSON file (for model metadata in report)",
+    )
     args = parser.parse_args()
 
     data = load_results(args.results_json)
@@ -1449,6 +1612,22 @@ def main() -> None:
     if args.no_html:
         return
 
+    # Load model metadata if --model was provided
+    model_meta = None
+    if args.model:
+        mp = Path(args.model)
+        if mp.exists():
+            try:
+                model_meta = json.loads(mp.read_text(encoding="utf-8"))
+                print(f"[visualize_energy] Model metadata loaded from: {args.model}",
+                      file=sys.stderr)
+            except json.JSONDecodeError:
+                print(f"[visualize_energy] WARNING: could not parse model file: {args.model}",
+                      file=sys.stderr)
+        else:
+            print(f"[visualize_energy] WARNING: model file not found: {args.model}",
+                  file=sys.stderr)
+
     # Build source annotation if requested
     source_annotation_html = ""
     if args.source and args.remarks:
@@ -1466,6 +1645,7 @@ def main() -> None:
     html_content = build_html(
         data, args.title, functions, total_all,
         source_annotation_html=source_annotation_html,
+        model_meta=model_meta,
     )
     out_path = Path(args.output)
     out_path.write_text(html_content, encoding="utf-8")
