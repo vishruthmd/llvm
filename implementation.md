@@ -17,10 +17,16 @@ llvm/
 ├── energy-models/
 │   └── aarch64.json                        # ARM Cortex-A55 model (300+ opcodes)
 ├── visualize_energy.py                     # HTML + ASCII report generator
-└── (build output goes to ../build/)
+└── build/                                  # Compiled output (generated)
 
-Test file: simple_test.c (project root)
-Pipeline:  llvm_pipeline/run.bat
+Test files (project root):
+├── simple_test.c                           # 15 functions (integer, FP, matmul, sort...)
+└── string_proc_test.c                      # 6 string processing functions
+
+Pipeline scripts (llvm_pipeline/):
+├── run.bat                                 # runs simple_test.c → report_llvm.html
+├── run01.bat                               # runs string_proc_test.c → report_string_proc.html
+└── output/                                 # generated HTML reports + JSON
 ```
 
 ## Core Classes
@@ -68,44 +74,21 @@ public:
 
 ### 1. `doInitialization(Module &M)`
 - Resets `AllResults` vector.
-- Called once per module before any function is processed.
-- Returns `false` (analysis pass — does not modify).
 
 ### 2. `runOnMachineFunction(MachineFunction &MF)`
 
-**Step-by-step:**
-
-1. **Lazy model initialization** (first call only):
-   - Creates `EnergyModel` from the `-energy-model` path.
-   - Prints debug info if `LLVM_DEBUG` is enabled.
-
-2. **Acquire analyses:**
-   - `MachineBlockFrequencyInfo &MBFI` — for block frequency data.
-   - `MachineOptimizationRemarkEmitter &ORE` — for remark emission.
-
-3. **Get entry frequency:**
-   - `MBFI.getEntryFreq()` — the frequency of the function's entry block.
-   - Used as the normalization denominator (guarded against zero).
-
+1. **Lazy model initialization** — creates `EnergyModel` from the `-energy-model` path.
+2. **Acquire analyses:** `MachineBlockFrequencyInfo` for block frequency data; `MachineOptimizationRemarkEmitter` for remark emission.
+3. **Get entry frequency** via `MBFI.getEntryFreq()`.
 4. **For each basic block:**
    - Compute `FreqScale = blockFreq / entryFreq`.
-   - For each machine instruction:
-     - Skip debug instructions (`isDebugInstr()`).
-     - Skip implicit defs (`isImplicitDef()`).
-     - Get opcode name: `Subtarget.getInstrInfo()->getName(opcode)`.
-     - Look up energy: `Model->getEnergy(opcodeName)`.
-     - Accumulate `RawBlockEnergy += instEnergy`.
+   - For each machine instruction: skip debug/pseudo, get opcode name via `Subtarget.getInstrInfo()->getName(opcode)`, look up energy.
    - Compute `WeightedBlockEnergy = RawBlockEnergy × FreqScale`.
-   - Emit `BlockEnergy` remark with fields: Function, Block, RawEnergy, FreqScale, WeightedEnergy, Instructions.
-   - Optionally store `BlockResult` for JSON output.
-
-5. **Emit `FunctionEnergy` remark** with total energy for the function.
-
+5. **Emit `FunctionEnergy` remark** with total energy.
 6. **Store `FunctionResult`** (only if `-energy-output` is specified).
 
 ### 3. `doFinalization(Module &M)`
-- If `-energy-output` was specified and results exist, calls `writeJSON()`.
-- Serializes `AllResults` to the output file.
+- If `-energy-output` was specified, calls `writeJSON()` to serialize results.
 
 ## JSON Output Schema
 
@@ -130,30 +113,6 @@ public:
   ]
 }
 ```
-
-## Optimization Remarks
-
-The pass emits standard LLVM optimization remarks tagged with `PassName = "energy"`:
-
-```bash
--Rpass-analysis=energy              # print to stderr
--fpass-remarks-output=remarks.yaml  # save to YAML file
-```
-
-**Per-block remark:**
-```
-remark: sample.c:79:5: [energy] BlockEnergy:
-  Function=matmul Block=for.body31 RawEnergy=52.5000
-  FreqScale=4096.0000 WeightedEnergy=215040.0000 Instructions=18
-```
-
-**Per-function remark:**
-```
-remark: sample.c:72:1: [energy] FunctionEnergy:
-  Function=matmul TotalEnergy=220415.5000
-```
-
-Remarks are anchored to `DiagnosticLocation` derived from the first real instruction's `DebugLoc` in each block, enabling source-level annotation when compiled with `-g`.
 
 ## Build System
 
@@ -197,7 +156,7 @@ cmake --build build --parallel
 | Process | 7 nm (TSMC) — values scaled from 28 nm / 45 nm data |
 | Frequency | 1800 MHz |
 | Voltage | 0.8 V |
-| Opcodes | 624 across 12 categories |
+| Opcodes | 300+ across 12 categories |
 
 ### Instruction Categories
 
@@ -224,15 +183,3 @@ Energy values are informed by:
 - Tiwari et al., *Power analysis of embedded software*, IEEE TVLSI 1994
 - Nunez-Yanez, *Energy measurement and modeling of ARM Cortex-A processors*, IEEE TC 2017
 - Kerrison & Eder, *Energy modeling of software for a hardware multithreaded embedded microprocessor*, ACM TECS 2015
-
-## Known Bugs Fixed
-
-| Bug | Symptom | Fix |
-|---|---|---|
-| Dangling `StringRef` keys | Crashes after JSON object destroyed | Replaced `DenseMap<StringRef,double>` with `StringMap<double>` |
-| Wrong `getAsNumber()` use | Compile error | Corrected `optional<double>` handling |
-| Wrong BFI type | Compile error | `MachineBlockFrequencyInfo` not `BlockFrequencyInfo` |
-| Wrong ORE type | Compile error | `MachineOptimizationRemarkEmitter` not `OptimizationRemarkEmitter` |
-| `MI.getOpcodeName()` doesn't exist | Compile error | Use `TII->getName(MI.getOpcode())` |
-| No `double` overload for `ore::NV` | Compile error | Pre-format with `snprintf` → string |
-| Wrong include path | Compile error | Use `llvm/Analysis/OptimizationRemarkEmitter.h` |

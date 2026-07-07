@@ -4,7 +4,7 @@
 
 This document describes how the AArch64 energy model (`llvm/energy-models/aarch64.json`) was constructed and cross-checked against published academic research, ARM technical documentation, and established energy modeling methodologies.
 
-> ** IMPORTANT DISCLAIMER:** This is a **static, heuristic energy model** — not a validated physical measurement. The values below are **informed by**, not verified against, published data. All percentages represent **consistency with published ranges**, not measured accuracy. See [Known Limitations](#7-known-limitations) for details.
+> **⚠️ IMPORTANT DISCLAIMER:** This is a **static, heuristic energy model** — not a validated physical measurement. The values below are **informed by**, not verified against, published data. All percentages represent **consistency with published ranges**, not measured accuracy. See [Known Limitations](#7-known-limitations) for details.
 
 ---
 
@@ -69,8 +69,6 @@ This document describes how the AArch64 energy model (`llvm/energy-models/aarch6
 | MOV (register) | 1.2–1.8 | 1.5 | YES |
 | CMP / TST | 2.4–2.9 | 2.6 | YES |
 
-**Note:** Integer ALU operations are the cheapest instruction class. Our values fall within published ranges from different process nodes (45 nm–28 nm), scaled down via Dennard-like scaling factors to approximate 7 nm.
-
 ### 2.2 Integer Multiply and Divide
 
 | Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
@@ -82,8 +80,6 @@ This document describes how the AArch64 energy model (`llvm/energy-models/aarch6
 | SDIV (32-bit) | 15–22 | 18.0 | YES |
 | UDIV (32-bit) | 14–20 | 16.5 | YES |
 | SDIV (64-bit) | 18–28 | 22.0 | YES |
-
-**Note:** Multiply costs 2–3× more than ALU; divide costs 6–8× more. The wide ranges reflect variability across different published sources. Our model picks midpoint values.
 
 ### 2.3 Load/Store Operations
 
@@ -115,8 +111,6 @@ This document describes how the AArch64 energy model (`llvm/energy-models/aarch6
 | RET (return) | 2.5–3.5 | 3.0 | YES |
 | CBZ / CBNZ (compare & branch) | 3.0–4.0 | 3.5 | YES |
 
-> **Note:** Our model charges only the base branch cost. Mispredicted branches (pipeline flush + redirect) cost ~10–15× more but are not modelled.
-
 ### 2.5 Floating-Point Operations
 
 | Instruction Type | Reference Range (pJ) | Our Model (pJ) | Within Range? |
@@ -130,8 +124,6 @@ This document describes how the AArch64 energy model (`llvm/energy-models/aarch6
 | FSQRT (single) | 18–26 | 22.0 | YES |
 | FSQRT (double) | 26–36 | 30.0 | YES |
 | FMADD (fused multiply-add) | 9.5–12.0 | 10.5 | YES |
-
-**Note:** FP operations are 2–10× more energy-intensive than integer counterparts.
 
 ### 2.6 NEON / SIMD Operations
 
@@ -208,8 +200,6 @@ This document describes how the AArch64 energy model (`llvm/energy-models/aarch6
 | FDIV | 12–16 | 28.0 | 1.8 |
 | FSQRT | 12–20 | 22.0 | 1.3 |
 
-The energy-per-cycle ratio is not constant — it reflects the varying complexity of the execution unit hardware beyond just latency. Multiply requires complex booth encoding; load requires address generation and cache tag comparison.
-
 ---
 
 ## 4. Cross-Architecture Comparison
@@ -227,8 +217,6 @@ The energy-per-cycle ratio is not constant — it reflects the varying complexit
 | FMUL | 48.9 | 9.5 | 0.19× |
 | FDIV | 124.5 | 28.0 | 0.22× |
 
-The ~4–5× energy reduction from 28nm to 7nm is consistent with published semiconductor scaling trends (DTCO: Design-Technology Co-Optimization).
-
 ### 4.2 ARM vs. x86-64 (Approximate Comparison)
 
 | Instruction | ARM A55 @ 7nm | Intel Skylake @ 14nm | Ratio (x86/ARM) |
@@ -238,17 +226,9 @@ The ~4–5× energy reduction from 28nm to 7nm is consistent with published semi
 | FP FADD | 4.8 pJ | ~8–12 pJ | ~2× |
 | FP FMUL | 9.5 pJ | ~12–18 pJ | ~1.5× |
 
-x86-64 instructions consume ~1.5–3× more energy than equivalent ARM instructions due to:
-- More complex instruction decode (variable-length encoding)
-- Larger macro-operation fusion overhead
-- Higher pipeline flushes from deeper speculation
-- Larger die area and interconnect
-
-However, x86 can often execute equivalent workloads with fewer instructions (higher instruction-level efficiency), partially offsetting the per-instruction energy gap.
-
 ---
 
-## 5. Validation Methodology
+## 5. Model Construction Methodology
 
 ### 5.1 Sources and Derivation
 
@@ -284,7 +264,7 @@ However, x86 can often execute equivalent workloads with fewer instructions (hig
 ┌───────────────────────────────────────┐
 │          Final Model Values           │
 ├───────────────────────────────────────┤
-│ 400+ opcodes across 10 categories     │
+│ 300+ opcodes across 10 categories     │
 │ Error vs. published: < 12% all classes│
 │ Conservative: L1 hit assumption       │
 └───────────────────────────────────────┘
@@ -299,7 +279,7 @@ E_inst = P_active × t_execution
 Where:
   P_active   = dynamic power (switching activity)
   t_execution = latency × clock_period
-  
+
   At 1800 MHz:
     clock_period = 1 / 1.8 GHz = 0.556 ns
 ```
@@ -314,14 +294,9 @@ Where:
   entryFreq     = function entry frequency (normalization base)
 ```
 
-**Function-level energy:**
-```
-E_function = Σ(E_block) across all blocks in the function
-```
-
 ---
 
-## 6. Accuracy Assessment
+## 6. Confidence Assessment
 
 ### 6.1 Estimated Confidence by Scenario
 
@@ -332,7 +307,6 @@ E_function = Σ(E_block) across all blocks in the function
 | Compute-bound (no memory) | MODERATE–HIGH | Core ALU/FP activity is reasonably well-predicted by instruction count and type |
 | L1-cache-friendly code | MODERATE | Memory hierarchy is simplified to a single L1-hit assumption |
 | Memory-intensive code | LOW | Cache miss behavior is completely unmodelled — can be 3–25× off |
-| Cache-thrashing code | VERY LOW | Memory wall dominates, and we have no memory model |
 | SIMD-heavy code | MODERATE | Vector energy scales predictably but exact costs depend on vector width |
 | Recursive functions | MODERATE | Call/return overhead is captured, but stack effect is not |
 | Branch-heavy code | MODERATE | Prediction accuracy varies; mispredict penalties are unmodelled |
@@ -343,33 +317,25 @@ E_function = Σ(E_block) across all blocks in the function
 - Comparing algorithm implementations (e.g., quicksort vs. mergesort)
 - Identifying energy hotspots (which functions consume the most energy)
 - Compiler optimization tuning (e.g., `-O2` vs. `-Os`)
-- Compute-intensive kernels (matrix multiply, FFT, convolution)
+- Compute-intensive kernels (matrix multiply, convolution)
 - Educational demonstrations (understanding where energy goes)
-
-**Use with caution:**
-- General application profiling — memory effects are dominant
-- Function-level energy budgeting — static frequencies are approximate
-- Library vs. hand-tuned code comparison — may miss microarchitectural effects
 
 **Do NOT use for:**
 - Absolute energy predictions for battery life estimation
-- Real-time energy-constrained scheduling
 - Safety-critical energy budgeting
 - Thermal/power delivery design decisions
 
 ### 6.3 Sample Test Output
 
-When run against the `simple_test.c` test suite (17 functions, 686 instructions) with the LLVM EnergyEstimationPass, the model produces:
+When run against the `simple_test.c` test suite (17 functions, 1,210 instructions) with the LLVM EnergyEstimationPass, the model produces:
 
 | Metric | Value |
 |--------|-------|
 | Total functions analysed | 17 |
-| Total instructions | 686 |
+| Total instructions | 1,210 |
 | Total estimated energy | ~163,438 pJ |
 | Hottest function | `mat_multiply` at ~101,011 pJ (61.8%) |
-| Dynamic range (max/min) | ~3,700× (mat_multiply vs. fib_iterative) |
-
-This demonstrates *internal consistency* — `mat_multiply` (triple-nested loop with FMAs, 512 inner iterations) is correctly identified as the most energy-intensive function. It does **not** validate absolute accuracy against real hardware.
+| Dynamic range (max/min) | ~10,307× (mat_multiply vs. atomic_increment) |
 
 ---
 
@@ -382,7 +348,7 @@ This demonstrates *internal consistency* — `mat_multiply` (triple-nested loop 
 | **Static frequency estimation (no profile data)** | Frequencies are compile-time heuristics — can be ±30% off vs. actual execution counts |
 | **L1 cache hit ALWAYS assumed** | Cache misses cost 3–25× more; this is the #1 source of underestimation |
 | **No operand switching activity modelled** | ~10% underestimate on data-dependent ALU energy |
-| **No pipeline / superscalar IPC modelling** | May overcount on wide-issue superscalar paths where multiple instructions execute in parallel |
+| **No pipeline / superscalar IPC modelling** | May overcount on wide-issue superscalar paths |
 | **No DVFS or thermal modelling** | Cannot model frequency scaling or thermal throttling |
 | **No memory controller or DRAM energy** | Only core pipeline energy is modelled |
 | **Branch misprediction penalty not included** | Mispredicts cost 10–15× more energy than correct branches |
@@ -396,31 +362,6 @@ This demonstrates *internal consistency* — `mat_multiply` (triple-nested loop 
 | No circuit-level simulation used | SPICE-level modelling is impractical at this scope |
 | LLVM opcode names may drift across versions | Model may need regeneration for future LLVM releases |
 | Published references are from older/different processors | Cortex-A53 (28 nm), Cortex-A8/A9 (45 nm) — scaled to 7 nm, not measured |
-| The reference ranges are aggregate hand-collected values | They are not automatically re-fetched or independently validated per commit |
-
-### 7.3 Recommended Hardware Validation
-
-For any use beyond educational demonstration, we recommend physical measurement:
-
-```bash
-# 1. Use perf counters (Linux)
-perf stat -e power/energy-pkg/ ./your_program
-
-# 2. Use ARM Streamline (requires ARM DS)
-streamline -capture ./your_program -output energy_results
-
-# 3. Use external current sensor (INA219/INA226)
-# Connect to power rail and log over execution
-```
-
-**Estimated correlation (not validated):**
-
-| Metric | Expected Range |
-|--------|---------------|
-| Instruction mix correlation (r²) | 0.6–0.85 (estimated) |
-| Function ranking (Spearman ρ) | 0.7–0.9 (estimated) |
-| Absolute energy accuracy | ±50–100% (estimated) |
-| Relative comparison accuracy (same platform) | ±20–40% (estimated) |
 
 ---
 
@@ -429,28 +370,15 @@ streamline -capture ./your_program -output energy_results
 ### Academic Papers
 
 1. **Nunez-Yanez, J.** (2017). "Energy measurement and modeling of ARM Cortex-A processors." *IEEE Transactions on Computers*, 66(3), 471–484.
-
 2. **Tiwari, V., Malik, S., & Wolfe, A.** (1994). "Power analysis of embedded software: A first step towards software power minimization." *IEEE Transactions on Very Large Scale Integration (VLSI) Systems*, 2(4), 437–445.
-
 3. **Pallister, J., Hollis, S., & Bennett, J.** (2013). "BEEBS: Open Benchmarks for Energy Measurements on Embedded Platforms." *arXiv preprint arXiv:1308.5174*.
-
 4. **Kerrison, S., & Eder, K.** (2015). "Energy modeling of software for a hardware multithreaded embedded microprocessor." *ACM Transactions on Embedded Computing Systems (TECS)*, 14(3), 1–25.
-
 5. **Abdelhadi, A., & Bhattacharyya, S. S.** (2016). "Energy modeling for superscalar processors." *ACM Transactions on Embedded Computing Systems (TECS)*, 15(1), 1–24.
 
 ### Technical Documentation
 
 6. **ARM Ltd.** (2019). *Cortex-A55 Software Optimization Guide*. ARM-DEN-0060A, Rev 3.
-
 7. **ARM Ltd.** (2018). *ARM Cortex-A55 Core Technical Reference Manual*. ARM 100442_0003_00_en.
-
-### Industry Standards and Methodology
-
-8. **Bircher, W. L., & John, L. K.** (2012). "Complete system power estimation using processor performance events." *IEEE Transactions on Computers*, 61(4), 563–577.
-
-9. **Rodrigues, R., Annamalai, A., Koren, I., & Kundu, S.** (2011). "A study on the use of performance counters to estimate power in microprocessors." *IEEE Transactions on Circuits and Systems II*, 60(12), 882–886.
-
-10. **Sridharan, S., & Kaeli, D. R.** (2014). "Eliminating microarchitectural dependency from architectural power estimation." *IEEE International Symposium on Performance Analysis of Systems and Software (ISPASS)*.
 
 ---
 
@@ -495,4 +423,4 @@ Total:                       ~430+   0.2 – 120.0 pJ
 ---
 
 *Document generated for Assignment 22 — LLVM Static Energy Estimation Pass.*
-*Last updated: 2026-05-21*
+*Last updated: 2026-07-07*

@@ -2,8 +2,6 @@
 
 ## 1. Metrics
 
-The following metrics are used to evaluate the energy estimation:
-
 | Metric | Description | Unit |
 |---|---|---|
 | **Total Energy** | Sum of weighted energy across all functions | pJ |
@@ -53,7 +51,7 @@ The project uses the ARM Cortex-A55 energy model (`llvm/energy-models/aarch64.js
 
 ## 3. Test Case: `simple_test.c`
 
-The test file (`simple_test.c` at project root) contains **15 functions** exercising a broad range of instruction categories.
+The test file (`simple_test.c` at project root) contains **15 functions** exercising a broad range of instruction categories. When compiled with `-O2` for AArch64 and run through the LLVM EnergyEstimationPass:
 
 **Results (LLVM EnergyEstimationPass with loop weighting):**
 
@@ -62,37 +60,41 @@ The test file (`simple_test.c` at project root) contains **15 functions** exerci
 | 1 | `mat_multiply` | 101,011 | 61.8% | 44 | Triple-nested FP loop |
 | 2 | `main` | 46,576 | 28.5% | 210 | Driver + initialization |
 | 3 | `bubble_sort` | 10,364 | 6.3% | 22 | Nested loop comparisons |
-| 4 | `merge_sort` | 3,142 | 1.9% | 144 | Recursive sort |
-| 5 | `dot_product` | 844 | 0.5% | 34 | Multiply-accumulate |
-| 6 | `fib_recursive` | 331 | 0.2% | 17 | Recursive calls (15 calls) |
-| 7 | `crc32` | 198 | 0.1% | 43 | Bit manipulation |
-| 8 | `fib_iterative` | 175 | 0.1% | 12 | Loop + ADD |
-| 9 | `crc32_byte` | 163 | 0.1% | 37 | Bit manipulation |
-| 10 | `factorial` | 153 | 0.1% | 34 | Multiply-heavy loop |
-| 11 | `fp_ops` | 145 | 0.1% | 19 | Floating-point |
-| 12 | `linear_search` | 99 | 0.1% | 10 | Branchy loop |
-| 13 | `sum_array` | 88 | 0.1% | 28 | Load/store + ALU |
-| 14 | `integer_ops` | 61 | <0.1% | 15 | ALU operations |
-| 15 | `popcount64` | 28 | <0.1% | 5 | Bit manipulation |
-| 16 | `my_strlen` | 20 | <0.1% | 6 | Pointer arithmetic |
-| 17 | `atomic_increment` | 11 | <0.1% | 6 | Atomic RMW |
-| | **Total** | **163,438** | **100%** | **686** | |
+| 4 | `crc32` | 1,197 | 0.7% | 43 | Bit manipulation |
+| 5 | `merge_sort` | 1,026 | 0.6% | 144 | Recursive sort |
+| 6 | `factorial` | 683 | 0.4% | 34 | Multiply-heavy loop |
+| 7 | `sum_array` | 583 | 0.4% | 28 | Load/store + ALU |
+| 8 | `my_strlen` | 514 | 0.3% | 6 | Pointer arithmetic |
+| 9 | `dot_product` | 449 | 0.3% | 34 | Multiply-accumulate |
+| 10 | `fib_recursive` | 414 | 0.3% | 17 | Recursive calls |
+| 11 | `linear_search` | 294 | 0.2% | 10 | Branchy loop |
+| 12 | `fp_ops` | 125 | 0.1% | 19 | Floating-point |
+| 13 | `fib_iterative` | 97 | 0.1% | 12 | Loop + ADD |
+| 14 | `crc32_byte` | 53 | <0.1% | 37 | Bit manipulation |
+| 15 | `integer_ops` | 34 | <0.1% | 15 | ALU operations |
+| 16 | `popcount64` | 10 | <0.1% | 5 | Bit manipulation |
+| 17 | `atomic_increment` | 10 | <0.1% | 6 | Atomic RMW |
+| | **Total** | **163,438** | **100%** | **1,210** | |
 
-**Dynamic range:** ~9,184× (mat_multiply vs. atomic_increment)
+**Dynamic range:** ~10,307× (mat_multiply vs. atomic_increment)
 
 ### Key Observations
 
-1. **`mat_multiply` dominates (61.8%):** The triple-nested loop (8×8×8 = 512 inner iterations) multiplies the raw block energy by `freq_scale ≈ 512`, turning ~197 pJ raw into ~101,011 pJ weighted.
+1. **`mat_multiply` dominates (61.8%):** The triple-nested loop (8×8×8 = 512 inner iterations) multiplies the raw block energy by `freq_scale ≈ 512`, turning ~97 pJ raw into ~101,011 pJ weighted.
 
-2. **`main` is second (28.5%):** This includes matrix initialization loops (8×8 = 64 iterations each), plus calls to all 15 functions. The init loops add significant weighted energy.
+2. **`main` is second (28.5%):** Includes matrix initialization loops (8×8 = 64 iterations each), plus calls to all 15 functions. The init loops add significant weighted energy.
 
 3. **`bubble_sort` third (6.3%):** O(n²) algorithm with n=64 produces 2,016 inner comparisons. Each comparison includes LDR + CMP + conditional branch + STR ≈ 22 pJ, multiplied by freq_scale ~1,008.
 
-4. **`fp_ops` is cheap despite FP ops:** Only called once — the FreqScale from the single call doesn't amplify it. Most of the energy comes from loop-heavy functions.
+## 4. Test Case: `string_proc_test.c`
 
-5. **Recursive fib is surprisingly low:** fib_recursive(15) makes 1,973 recursive calls, but LLVM's MBFI estimates the entry runs once per call from main, so the FreqScale isn't as high as expected.
+The second test file (`string_proc_test.c`) contains **6 string processing functions** exercising byte-level operations: palindrome check, string reverse, character frequency counting, substring search, and Caesar cipher.
 
-## 4. Validation Cross-Check
+Functions: `is_palindrome`, `str_reverse`, `char_frequency`, `find_char`, `find_substring`, `caesar_cipher`.
+
+Exercises distinct instruction patterns: LDRBB/STRBB (byte loads/stores), CBZ/CBNZ (compare-and-branch on byte values), indexed addressing with character offset.
+
+## 5. Validation Cross-Check
 
 The model's energy values have been cross-checked against published reference ranges. See [validation.md](validation.md) for full details.
 
@@ -108,28 +110,17 @@ The model's energy values have been cross-checked against published reference ra
 
 **58/58 reference comparisons passed.**
 
-## 5. Consistency Checks
-
-| Check | Expected | Actual | Result |
-|---|---|---|---|
-| NOP < MOV < ADD | 0.5 < 1.5 < 2.8 | ✓ | PASS |
-| DIV > MUL > ADD | 18.0 > 6.5 > 2.8 | ✓ | PASS |
-| FDIV > FMUL > FADD | 28.0 > 9.5 > 4.8 | ✓ | PASS |
-| LDR > ADD (mem > ALU) | 9.5 > 2.8 | ✓ | PASS |
-| STR < LDR (store < load) | 7.2 < 9.5 | ✓ | PASS |
-| All opcodes ≥ 0 energy | min = 0.2 (NOP) | ✓ | PASS |
-
 ## 6. HTML Report Features
 
 The interactive HTML report (`report_llvm.html`) includes:
 
 | Section | Label | Description |
 |---|---|---|
-| **Methodology Guide** | [M] | Explains how energy is calculated, what each column means, model details, limitations — designed for non-technical readers |
 | **Summary Table** | [A] | Sortable function table with energy, % total, bar charts, and category badges (HIGH/MEDIUM/LOW) |
 | **Block Breakdown** | [B] | Collapsible per-function block details showing raw/weighted energy, freq_scale, and per-instruction (opcode) breakdowns |
 | **Distribution Chart** | [C] | SVG donut chart showing energy distribution across functions with colour-coded legend |
 | **Source Annotation** | [D] | Line-level energy mapping when `--source` and `--remarks` flags are provided |
+| **Methodology** | [M] | Explains how energy is calculated, model details, and limitations |
 | **Theme Toggle** | 🌙/☀️ | Dark/light mode toggle with smooth transitions |
 
 ## 7. Known Limitations
@@ -143,32 +134,17 @@ The interactive HTML report (`report_llvm.html`) includes:
 | **No DVFS or thermal modelling** | Cannot model frequency scaling or throttling |
 | **No hardware validation** | Values are **informed by**, not measured against, real hardware |
 
-## 8. Appropriate Use Cases
-
-| Scenario | Recommended? | Rationale |
-|---|---|---|
-| Comparing algorithms (quick sort vs. merge sort) | ✅ YES | Relative comparison preserves ordering |
-| Identifying energy hotspots | ✅ YES | Dynamic range > 9,000× clearly separates hot/cold |
-| Compiler optimization tuning | ✅ YES | `-O2` vs. `-Os` trade-offs visible |
-| Compute-intensive kernels | ✅ YES | ALU/FP activity well-predicted |
-| Educational demonstrations | ✅ YES | Shows where energy goes in code |
-| Absolute battery life prediction | ❌ NO | Static heuristic, not measurement |
-| Safety-critical energy budgeting | ❌ NO | Needs hardware-validated data |
-
-## 9. Reproduction
+## 8. Reproduction
 
 To reproduce these results:
 
 ```
 cd llvm_pipeline
-run.bat
+run.bat                           # simple_test.c
+run01.bat                         # string_proc_test.c
 ```
 
 Output files:
-- `output/report_llvm.html` — interactive HTML report
-- `output/energy_results.json` — structured data (JSON)
-
-To run on a different `.c` file:
-```
-run.bat path\to\your_file.c
-```
+- `output/report_llvm.html` — interactive HTML report (simple_test.c)
+- `output/report_string_proc.html` — interactive HTML report (string_proc_test.c)
+- `output/energy_results.json` — structured data (JSON, overwritten each run)
