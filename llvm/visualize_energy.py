@@ -52,6 +52,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from opcode_glossary import describe_opcode
+
 # ---------------------------------------------------------------------------
 # Data loading
 # ---------------------------------------------------------------------------
@@ -752,6 +754,11 @@ details > .block-table { padding: 0; }
   font-size: 0.75rem;
   color: var(--accent);
 }
+.opcode-table td.meaning {
+  color: var(--muted);
+  font-size: 0.72rem;
+  max-width: 320px;
+}
 
 /* SVG donut chart */
 .donut-section {
@@ -1395,9 +1402,11 @@ def build_html(
             for opcode, info in sorted(ib.items(), key=lambda x: x[1]["total"], reverse=True):
                 op_ratio = info["total"] / max_op_energy if max_op_energy > 0 else 0.0
                 op_color = energy_color(info["total"], max_op_energy)
+                meaning = describe_opcode(opcode, arch)
                 op_rows.append(f"""
             <tr>
               <td class="opcode" data-sort="{html.escape(opcode)}"><code>{html.escape(opcode)}</code></td>
+              <td class="meaning">{html.escape(meaning)}</td>
               <td class="number">{info["count"]}</td>
               <td class="number">{info["energy_per"]:.2f}</td>
               <td class="number" data-sort="{info["total"]:.6f}">{info["total"]:.2f}</td>
@@ -1415,6 +1424,7 @@ def build_html(
             <thead>
               <tr>
                 <th>Opcode</th>
+                <th>Meaning</th>
                 <th class="num">Count</th>
                 <th class="num">Energy/Inst ({html.escape(unit)})</th>
                 <th class="num">Total ({html.escape(unit)})</th>
