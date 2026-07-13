@@ -67,7 +67,7 @@ echo "[3/4] Running EnergyEstimationPass..."
 
 echo "[4/4] Generating HTML report..."
 python3 "$PROJECT_ROOT/llvm/visualize_energy.py" "$OUT/energy_results.json" \
-    --output "$OUT/report.html" --title "Energy Report: $BASENAME.c"
+    --output "$OUT/report.html" --title "Energy Report: $BASENAME.c" --model "$MODEL"
 
 echo ""
 echo "Done! Output in $OUT/"
