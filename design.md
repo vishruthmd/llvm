@@ -9,7 +9,10 @@ Input C source
     │  clang -O2 -target aarch64-linux-gnu -emit-llvm -c
     ▼
 LLVM Bitcode (.bc)
-    │  llc -load EnergyEstimationPass.so
+    │  llc -stop-after=finalize-isel
+    ▼
+MIR (.mir)
+    │  llc -load EnergyEstimationPass.so -run-pass=energy-estimation
     ▼
 MachineFunctionPass
     ├── MachineBlockFrequencyInfo → block frequencies
@@ -31,22 +34,18 @@ MachineFunctionPass
 
 **Why:**
 - Machine instructions map 1:1 to real hardware instructions, so per-instruction energy costs from published literature apply directly.
-- LLVM IR instructions (e.g., `getelementptr`, `load`, `add`) are abstract and may be lowered into multiple machine instructions, making energy attribution ambiguous.
 - `MachineBlockFrequencyInfo` provides realistic static execution frequencies accounting for loop trip counts and branch probabilities.
 
 **Rejected alternative — IR-level pass:**
-- Simpler to implement (no LLVM CodeGen dependency).
-- Cannot distinguish between different instructions that lower to the same IR (e.g., `ADDXri` vs `ADDWri` have different word sizes and thus different energy costs).
-- Lacks access to machine-level frequency information.
+- Cannot distinguish between different instructions that lower to the same IR (e.g., `ADDXri` vs `ADDWri` have different word sizes).
 
 ### 2. JSON Energy Model (not hardcoded values)
 
-**Chosen:** External JSON file with 624 opcode-to-energy mappings across 12 instruction categories.
+**Chosen:** External JSON file with opcode-to-energy mappings across instruction categories.
 
 **Why:**
 - Decouples the pass logic from the energy data — the same pass can target different architectures by swapping the JSON file.
 - Easy to update, extend, or validate without recompiling the C++ pass.
-- The JSON can be automatically generated or cross-checked by Python scripts.
 
 **Schema:**
 ```json
@@ -63,14 +62,8 @@ MachineFunctionPass
 ```
 
 **Rejected alternative — hardcoded enum values:**
-- Faster lookup (compile-time constant).
 - Requires recompilation for every model change.
 - Cannot easily support multiple architectures.
-
-**Rejected alternative — LLVM TableGen backend:**
-- Tighter integration with LLVM's instruction definitions.
-- More complex build system dependency.
-- No advantage over JSON for a research/educational project.
 
 ### 3. Static Block Frequency Weighting (not dynamic profiling)
 
@@ -81,48 +74,30 @@ MachineFunctionPass
 WeightedEnergy(block) = Σ(InstEnergy) × (BlockFreq / EntryFreq)
 ```
 
-`BlockFreq` is the estimated execution count of the basic block; `EntryFreq` is the function's entry frequency. This ratio gives the number of times the block executes relative to a single function call.
-
 **Why:**
 - Zero runtime overhead — everything happens at compile time.
-- Hot loops naturally surface with high `FreqScale` values (e.g., `4096×` for a 16×16×16 matrix multiply inner loop).
-- Cold paths (rarely executed error handlers) correctly contribute negligible energy.
-
-**Rejected alternative — dynamic profiling (PGO):**
-- Requires instrumented builds and representative training inputs.
-- More accurate for production use.
-- Out of scope for a static analysis tool.
+- Hot loops naturally surface with high `FreqScale` values.
 
 **Rejected alternative — assume each block executes once:**
-- Simple but completely misses loop effects — energy estimates would be off by orders of magnitude for loop-heavy code.
+- Completely misses loop effects — estimates would be off by orders of magnitude for loop-heavy code.
 
 ### 4. Python Visualization (not in-C++ HTML generation)
 
 **Chosen:** Separate Python script (`visualize_energy.py`) that reads the JSON output and generates HTML.
 
 **Why:**
-- Avoid pulling large dependencies (e.g., a JSON-to-HTML library) into the LLVM pass.
+- Avoid pulling large dependencies into the LLVM pass.
 - Python allows rapid iteration on the visual design without recompiling C++.
-- The JSON output is machine-readable, so users can build their own tooling.
 
-### 5. Opcode Name Resolution
+## How to Run
 
-LLVM's `TargetInstrInfo::getName()` returns the LLVM-internal opcode name (e.g., `ADDWri`, `ADDXrs`), which may differ from the assembly mnemonic (`ADD`).
+```
+cd llvm_pipeline
+run.bat                           # simple_test.c → report_llvm.html
+run01.bat                         # string_proc_test.c → report_string_proc.html
+```
 
-**Approach:**
-- The JSON model includes both canonical mnemonics (`ADD`) and LLVM-internal names (`ADDWri`, `ADDXrs`, `ADDv16i8`).
-- Lookup tries the exact name first, falls back to a category default if not found.
-- This ensures the model works regardless of which name format `getName()` returns.
-
-## Alternatives Not Yet Explored
-
-| Alternative | Potential Benefit | Complexity |
-|---|---|---|
-| **Cache miss modelling** | Would fix the #1 source of underestimation | High — requires data flow analysis |
-| **Pipeline/IPC simulation** | More accurate for superscalar architectures | Very high — essentially a full microarch simulator |
-| **Machine learning model** | Could learn from real measurements | Requires large labelled dataset |
-| **Dynamic voltage/frequency scaling** | Models power management states | Moderate — requires OS interface data |
-| **Multi-architecture support** | Broadens applicability | Moderate — need models for x86, RISC-V |
+Each script compiles the C source to AArch64 bitcode, generates MIR, runs the EnergyEstimationPass, and produces an interactive HTML report — which opens automatically in your browser.
 
 ## Architecture Diagram
 

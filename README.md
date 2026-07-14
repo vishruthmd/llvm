@@ -35,9 +35,6 @@ your_code.c
     ▼
  sample.bc  (LLVM bitcode)
     │  llc -load EnergyEstimationPass.so
-    │       -energy-model energy-models/aarch64.json
-    │       -energy-output results.json
-    │       -Rpass-analysis=energy
     ▼
  EnergyEstimationPass  (MachineFunctionPass)
     ├─ MachineBlockFrequencyInfo  →  blockFreq / entryFreq per block
@@ -45,11 +42,7 @@ your_code.c
     └─ JSON model lookup          →  pJ cost per instruction
     │
     ├──▶  results.json        (structured energy breakdown)
-    └──▶  remarks to stderr   (-Rpass-analysis=energy)
-              │
-              │  python visualize_energy.py results.json
-              ▼
-         energy_report.html  (dark-themed, sortable, heat-map bars)
+    └──▶  report_llvm.html    (interactive HTML report)
 ```
 
 Every machine instruction is looked up in a JSON energy model mapping opcode names to picojoule costs. Each basic block's raw instruction energy is then weighted by its static execution frequency relative to the function entry block, surfacing hot loops automatically.
@@ -70,11 +63,11 @@ start output/energy_report.html                               # open report
 
 ### Linux / WSL — Full LLVM Pass
 
-```bash
-bin/build.sh                        # build the compiled LLVM pass
-bin/run.sh                          # run on default test (llvm/test/sample.c)
-bin/run.sh examples/simple_test.c   # run on a specific test file
+From **cmd.exe**:
 ```
+cd llvm_pipeline
+run.bat                           # runs simple_test.c (default)
+run01.bat                         # runs string_proc_test.c
 
 ---
 
@@ -146,41 +139,60 @@ start output/energy_report.html
 sudo apt install llvm-14 llvm-14-dev clang-14 cmake ninja-build python3
 ```
 
-### Build
+Output: `llvm_pipeline\output\report_llvm.html` (or `report_string_proc.html`)
 
-```bash
-cmake -S llvm -B build \
-      -DLLVM_DIR=/usr/lib/llvm-14/lib/cmake/llvm \
-      -DCMAKE_BUILD_TYPE=Release \
-      -G Ninja
-
-cmake --build build --parallel
+Inline usage:
+```
+C:\Users\Karan\Desktop\llvm\llvm\llvm_pipeline\run.bat
 ```
 
-### Run
+> Requires the compiled LLVM pass (`build/`). To rebuild:
+> ```
+> cmake -S llvm -B build -DLLVM_DIR=/usr/lib/llvm-14/lib/cmake/llvm -DCMAKE_BUILD_TYPE=Release -G Ninja
+> cmake --build build --parallel
+> ```
 
-```bash
-# 1. Compile to bitcode
-clang -O2 -target aarch64-linux-gnu -emit-llvm -c llvm/test/sample.c -o sample.bc
+---
 
-# 2. Run the pass
-llc -load ./build/EnergyEstimationPass.so \
-    -energy-estimation \
-    -energy-model llvm/energy-models/aarch64.json \
-    -energy-output results.json \
-    -mtriple aarch64-linux-gnu \
-    -Rpass-analysis=energy \
-    sample.bc -o sample.s 2>remarks.txt
+## Project Structure
 
-# 3. Generate HTML report
-python3 llvm/visualize_energy.py results.json --output report.html
+```
+.
+├── simple_test.c                  ← 15 functions (integer, FP, matmul, sort, etc.)
+├── string_proc_test.c             ← 6 string processing functions (palindrome, cipher, etc.)
+│
+├── llvm_pipeline/                 ← Batch pipeline scripts
+│   ├── run.bat                    ← runs simple_test.c → report_llvm.html
+│   ├── run01.bat                  ← runs string_proc_test.c → report_string_proc.html
+│   └── output/                    ← Generated HTML reports + JSON
+│
+├── llvm/                          ← LLVM pass source + build
+│   ├── energy-models/
+│   │   └── aarch64.json           ← ARM Cortex-A55 model (300+ opcodes)
+│   ├── build/                     ← Compiled LLVM pass
+│   ├── visualize_energy.py        ← HTML report generator
+│   ├── include/llvm/Analysis/
+│   │   └── EnergyModel.h
+│   └── lib/
+│       ├── Analysis/
+│       │   ├── EnergyModel.cpp    ← JSON model loader
+│       │   └── CMakeLists.txt
+│       └── CodeGen/
+│           ├── EnergyEstimation.cpp ← MachineFunctionPass
+│           └── CMakeLists.txt
+│
+├── README.md                      ← This file
+├── design.md                      ← Architecture & design decisions
+├── implementation.md              ← Pass internals & build system
+├── evaluation.md                  ← Metrics, test cases, baseline
+└── validation.md                  ← Cross-check against published literature
 ```
 
 ---
 
 ## Energy Model
 
-The model lives in `llvm/energy-models/aarch64.json` and targets the **ARM Cortex-A55** at 1800 MHz / 0.8 V. It covers 400+ opcodes across every instruction class:
+The model (`llvm/energy-models/aarch64.json`) targets the **ARM Cortex-A55** at 1800 MHz / 0.8 V. It covers 300+ opcodes:
 
 | Category | Examples | Range |
 |---|---|---|
@@ -194,38 +206,13 @@ The model lives in `llvm/energy-models/aarch64.json` and targets the **ARM Corte
 | NEON / SIMD | `FADDv4f32`, `FMLAv2f64` | 9–120 pJ |
 | Crypto | `AESErr`, `SHA256Hrrr` | 12–15 pJ |
 
-Values are **informed by** published data from Pallister et al. (BEEBS 2013), the ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A), and Tiwari et al. (IEEE TVLSI 1994). Note: reference data comes from older process nodes (28–45 nm) and has been scaled to approximate 7 nm — these are heuristic estimates, not validated measurements.
-
-Both canonical assembly mnemonics (`ADD`) and LLVM-internal opcode names (`ADDWri`, `ADDXrs`) are included so the model matches whatever `TargetInstrInfo::getName()` returns.
+Values are **informed by** published data from the ARM Cortex-A55 Software Optimization Guide (ARM-DEN-0060A), Pallister et al. (BEEBS 2013), Tiwari et al. (IEEE TVLSI 1994), and others. See [validation.md](validation.md) for the full cross-check.
 
 ---
 
-## Optimization Remarks
+## Sample Results
 
-The pass emits standard LLVM optimization remarks tagged `energy`, visible with:
-
-```bash
--Rpass-analysis=energy              # print to stderr
--fpass-remarks-output=remarks.yaml  # save to YAML file
-```
-
-Example output:
-
-```
-remark: sample.c:79:5: [energy] BlockEnergy:
-  Function=matmul Block=for.body31 RawEnergy=52.5000
-  FreqScale=4096.0000 WeightedEnergy=215040.0000 Instructions=18
-
-remark: sample.c:72:1: [energy] FunctionEnergy:
-  Function=matmul TotalEnergy=220415.5000
-```
-
-The innermost loop of a 16×16×16 matrix multiply runs with a `FreqScale` of 4096 — meaning its energy contribution is 4096× its per-iteration cost. This is exactly what block-frequency weighting surfaces.
-
----
-
-## Visualization
-
+When run against `simple_test.c` (17 functions, 1,210 instructions):
 `llvm/visualize_energy.py` reads the JSON output and generates a self-contained HTML report. Pure Python 3, no pip installs needed.
 
 ```bash
@@ -247,19 +234,20 @@ The report includes:
 
 ```
   Function                          Energy (pJ)   %Total
-  matmul                              1,919.50    39.8%   [####################]
-  main                                1,285.20    26.7%   [#############-------]
-  merge_sort                            824.30    17.1%   [#########-----------]
-  dot_product                           252.40     5.2%   [###-----------------]
-  fp_ops                                156.80     3.3%   [##------------------]
-  fib_recursive                          96.30     2.0%   [#-------------------]
-  integer_ops                            70.50     1.5%   [#-------------------]
+  mat_multiply                      101,010.96    61.8%   [####################]
+  main                               46,576.08    28.5%   [#############-------]
+  bubble_sort                        10,364.13     6.3%   [####----------------]
+  crc32                               1,196.92     0.7%   [--------------------]
+  merge_sort                          1,025.56     0.6%   [--------------------]
+  factorial                             682.69     0.4%   [--------------------]
+  sum_array                             583.16     0.4%   [--------------------]
   ...
-  Total: 4,819.20 pJ
+  Total: 163,438.22 pJ
 ```
 
 ---
 
+## Limitations
 ## Project Structure
 
 ```
@@ -320,11 +308,11 @@ The report includes:
 
 | Limitation | Effect |
 |---|---|
-| Static frequency only | Estimates can be ±30% off on branch-heavy code vs. actual execution |
-| L1 cache hit ALWAYS assumed | Cache misses can cost 3–25× more — the #1 source of underestimation |
+| Static frequency only | Estimates can be ±30% off on branch-heavy code |
+| L1 cache hit ALWAYS assumed | Cache misses cost 3–25× more — #1 source of underestimation |
 | No operand switching activity | Likely underestimates data-dependent ALU energy by ~10% |
-| No pipeline / IPC modelling | May overcount on superscalar paths where instructions execute in parallel |
-| No hardware validation | All claims are heuristic — see validation.md for full caveats |
+| No pipeline / IPC modelling | May overcount on superscalar paths |
+| No hardware validation | All claims are heuristic — see [validation.md](validation.md) |
 
 ---
 
@@ -345,4 +333,4 @@ The report includes:
 2. Pallister et al. — *BEEBS: Open Benchmarks for Energy Measurements on Embedded Platforms*, arXiv:1308.5174, 2013
 3. Tiwari et al. — *Power analysis of embedded software: A first step towards software power minimization*, IEEE TVLSI, 1994
 4. Kerrison & Eder — *Energy modeling of software for a hardware multithreaded embedded microprocessor*, ACM TECS, 2015
-5. Abdelhadi & Bhattacharyya — *Energy modeling for superscalar processors*, ACM TECS, 2016
+5. Nunez-Yanez — *Energy measurement and modeling of ARM Cortex-A processors*, IEEE TC, 2017
